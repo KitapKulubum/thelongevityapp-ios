@@ -1,0 +1,557 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		ECEEFBD22EE211F5009CAEB9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = ECEEFBBC2EE211F2009CAEB9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = ECEEFBC32EE211F2009CAEB9;
+			remoteInfo = thelongevityapp;
+		};
+		ECEEFBDC2EE211F5009CAEB9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = ECEEFBBC2EE211F2009CAEB9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = ECEEFBC32EE211F2009CAEB9;
+			remoteInfo = thelongevityapp;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		ECEEFBC42EE211F2009CAEB9 /* thelongevityapp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = thelongevityapp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		ECEEFBD12EE211F5009CAEB9 /* thelongevityappTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = thelongevityappTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		ECEEFBDB2EE211F5009CAEB9 /* thelongevityappUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = thelongevityappUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		ECEEFBC62EE211F2009CAEB9 /* thelongevityapp */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = thelongevityapp;
+			sourceTree = "<group>";
+		};
+		ECEEFBD42EE211F5009CAEB9 /* thelongevityappTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = thelongevityappTests;
+			sourceTree = "<group>";
+		};
+		ECEEFBDE2EE211F5009CAEB9 /* thelongevityappUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = thelongevityappUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		ECEEFBC12EE211F2009CAEB9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECEEFBCE2EE211F5009CAEB9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECEEFBD82EE211F5009CAEB9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		ECEEFBBB2EE211F2009CAEB9 = {
+			isa = PBXGroup;
+			children = (
+				ECEEFBC62EE211F2009CAEB9 /* thelongevityapp */,
+				ECEEFBD42EE211F5009CAEB9 /* thelongevityappTests */,
+				ECEEFBDE2EE211F5009CAEB9 /* thelongevityappUITests */,
+				ECEEFBC52EE211F2009CAEB9 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		ECEEFBC52EE211F2009CAEB9 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				ECEEFBC42EE211F2009CAEB9 /* thelongevityapp.app */,
+				ECEEFBD12EE211F5009CAEB9 /* thelongevityappTests.xctest */,
+				ECEEFBDB2EE211F5009CAEB9 /* thelongevityappUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		ECEEFBC32EE211F2009CAEB9 /* thelongevityapp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ECEEFBE52EE211F5009CAEB9 /* Build configuration list for PBXNativeTarget "thelongevityapp" */;
+			buildPhases = (
+				ECEEFBC02EE211F2009CAEB9 /* Sources */,
+				ECEEFBC12EE211F2009CAEB9 /* Frameworks */,
+				ECEEFBC22EE211F2009CAEB9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				ECEEFBC62EE211F2009CAEB9 /* thelongevityapp */,
+			);
+			name = thelongevityapp;
+			packageProductDependencies = (
+			);
+			productName = thelongevityapp;
+			productReference = ECEEFBC42EE211F2009CAEB9 /* thelongevityapp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		ECEEFBD02EE211F5009CAEB9 /* thelongevityappTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ECEEFBE82EE211F5009CAEB9 /* Build configuration list for PBXNativeTarget "thelongevityappTests" */;
+			buildPhases = (
+				ECEEFBCD2EE211F5009CAEB9 /* Sources */,
+				ECEEFBCE2EE211F5009CAEB9 /* Frameworks */,
+				ECEEFBCF2EE211F5009CAEB9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				ECEEFBD32EE211F5009CAEB9 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				ECEEFBD42EE211F5009CAEB9 /* thelongevityappTests */,
+			);
+			name = thelongevityappTests;
+			packageProductDependencies = (
+			);
+			productName = thelongevityappTests;
+			productReference = ECEEFBD12EE211F5009CAEB9 /* thelongevityappTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		ECEEFBDA2EE211F5009CAEB9 /* thelongevityappUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ECEEFBEB2EE211F5009CAEB9 /* Build configuration list for PBXNativeTarget "thelongevityappUITests" */;
+			buildPhases = (
+				ECEEFBD72EE211F5009CAEB9 /* Sources */,
+				ECEEFBD82EE211F5009CAEB9 /* Frameworks */,
+				ECEEFBD92EE211F5009CAEB9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				ECEEFBDD2EE211F5009CAEB9 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				ECEEFBDE2EE211F5009CAEB9 /* thelongevityappUITests */,
+			);
+			name = thelongevityappUITests;
+			packageProductDependencies = (
+			);
+			productName = thelongevityappUITests;
+			productReference = ECEEFBDB2EE211F5009CAEB9 /* thelongevityappUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		ECEEFBBC2EE211F2009CAEB9 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					ECEEFBC32EE211F2009CAEB9 = {
+						CreatedOnToolsVersion = 16.4;
+					};
+					ECEEFBD02EE211F5009CAEB9 = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = ECEEFBC32EE211F2009CAEB9;
+					};
+					ECEEFBDA2EE211F5009CAEB9 = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = ECEEFBC32EE211F2009CAEB9;
+					};
+				};
+			};
+			buildConfigurationList = ECEEFBBF2EE211F2009CAEB9 /* Build configuration list for PBXProject "thelongevityapp" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = ECEEFBBB2EE211F2009CAEB9;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = ECEEFBC52EE211F2009CAEB9 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				ECEEFBC32EE211F2009CAEB9 /* thelongevityapp */,
+				ECEEFBD02EE211F5009CAEB9 /* thelongevityappTests */,
+				ECEEFBDA2EE211F5009CAEB9 /* thelongevityappUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		ECEEFBC22EE211F2009CAEB9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECEEFBCF2EE211F5009CAEB9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECEEFBD92EE211F5009CAEB9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		ECEEFBC02EE211F2009CAEB9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECEEFBCD2EE211F5009CAEB9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECEEFBD72EE211F5009CAEB9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		ECEEFBD32EE211F5009CAEB9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = ECEEFBC32EE211F2009CAEB9 /* thelongevityapp */;
+			targetProxy = ECEEFBD22EE211F5009CAEB9 /* PBXContainerItemProxy */;
+		};
+		ECEEFBDD2EE211F5009CAEB9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = ECEEFBC32EE211F2009CAEB9 /* thelongevityapp */;
+			targetProxy = ECEEFBDC2EE211F5009CAEB9 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		ECEEFBE32EE211F5009CAEB9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = U622JYBJCF;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		ECEEFBE42EE211F5009CAEB9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = U622JYBJCF;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		ECEEFBE62EE211F5009CAEB9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = U622JYBJCF;
+				ENABLE_PREVIEWS = YES;
+				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "$(SRCROOT)/thelongevityapp/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gizemdemir.thelongevityapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		ECEEFBE72EE211F5009CAEB9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = U622JYBJCF;
+				ENABLE_PREVIEWS = YES;
+				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "$(SRCROOT)/thelongevityapp/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gizemdemir.thelongevityapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		ECEEFBE92EE211F5009CAEB9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = U622JYBJCF;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gizemdemir.thelongevityappTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/thelongevityapp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/thelongevityapp";
+			};
+			name = Debug;
+		};
+		ECEEFBEA2EE211F5009CAEB9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = U622JYBJCF;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gizemdemir.thelongevityappTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/thelongevityapp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/thelongevityapp";
+			};
+			name = Release;
+		};
+		ECEEFBEC2EE211F5009CAEB9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = U622JYBJCF;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gizemdemir.thelongevityappUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = thelongevityapp;
+			};
+			name = Debug;
+		};
+		ECEEFBED2EE211F5009CAEB9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = U622JYBJCF;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gizemdemir.thelongevityappUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = thelongevityapp;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		ECEEFBBF2EE211F2009CAEB9 /* Build configuration list for PBXProject "thelongevityapp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECEEFBE32EE211F5009CAEB9 /* Debug */,
+				ECEEFBE42EE211F5009CAEB9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ECEEFBE52EE211F5009CAEB9 /* Build configuration list for PBXNativeTarget "thelongevityapp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECEEFBE62EE211F5009CAEB9 /* Debug */,
+				ECEEFBE72EE211F5009CAEB9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ECEEFBE82EE211F5009CAEB9 /* Build configuration list for PBXNativeTarget "thelongevityappTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECEEFBE92EE211F5009CAEB9 /* Debug */,
+				ECEEFBEA2EE211F5009CAEB9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ECEEFBEB2EE211F5009CAEB9 /* Build configuration list for PBXNativeTarget "thelongevityappUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECEEFBEC2EE211F5009CAEB9 /* Debug */,
+				ECEEFBED2EE211F5009CAEB9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = ECEEFBBC2EE211F2009CAEB9 /* Project object */;
+}

@@ -9,11 +9,20 @@ import Foundation
 
 struct DailyUpdateRequest: Encodable {
     let userId: String
-    let sleepHours: Double
-    let steps: Int
-    let vigorousMinutes: Int
-    let stressLevel: Int
-    let lateCaffeine: Bool
-    let lateScreenUsage: Bool
+    let chronologicalAgeYears: Double
+    let metrics: Metrics
+    
+    struct Metrics: Encodable {
+        var date: String
+        var sleepHours: Double
+        var steps: Int
+        var vigorousMinutes: Int
+        var processedFoodScore: Int
+        var alcoholUnits: Int
+        var stressLevel: Int
+        var lateCaffeine: Bool
+        var screenLate: Bool
+        var bedtimeHour: Double
+    }
 }
 

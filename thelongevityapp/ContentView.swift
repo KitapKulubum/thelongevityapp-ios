@@ -158,11 +158,7 @@ struct OrganicPath2: Shape {
     }
 }
 
-// Chat Response Model
-struct ChatResponse: Decodable {
-    let answer: String
-}
-
+// ContentView.swift
 struct ContentView: View {
     @State private var userMessage: String = ""
     @State private var aiAnswer: String = "Ask Longevity AI something to get started."
@@ -300,7 +296,7 @@ struct ContentView: View {
                                 .padding(20)
                             } else {
                                 ScrollView {
-                                    Text(aiAnswer)
+                                    Text(.init(processMarkdown(aiAnswer)))
                                         .font(.system(size: 16, weight: .regular, design: .rounded))
                                         .foregroundColor(.white)
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -366,7 +362,15 @@ struct ContentView: View {
     
     func sendMessageToLongevityAI() {
         guard !userMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        guard let url = URL(string: "http://localhost:4000/api/chat") else { return }
+        // ... (existing code for sending message) ...
+        let baseURL: URL = {
+            #if DEBUG
+            return URL(string: "http://localhost:4000")!
+            #else
+            return URL(string: "https://api.yourproductiondomain.com")!
+            #endif
+        }()
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("chat")
         
         isLoading = true
         errorMessage = nil
@@ -412,6 +416,22 @@ struct ContentView: View {
                 }
             }
         }.resume()
+    }
+    
+    private func processMarkdown(_ text: String) -> String {
+        let lines = text.components(separatedBy: .newlines)
+        let cleanedLines = lines.map { line -> String in
+            var l = line.trimmingCharacters(in: .whitespaces)
+            if l.hasPrefix("### ") {
+                l = "**" + l.replacingOccurrences(of: "### ", with: "") + "**"
+            } else if l.hasPrefix("## ") {
+                l = "**" + l.replacingOccurrences(of: "## ", with: "") + "**"
+            } else if l.hasPrefix("# ") {
+                l = "**" + l.replacingOccurrences(of: "# ", with: "") + "**"
+            }
+            return l
+        }
+        return cleanedLines.joined(separator: "\n")
     }
 }
 

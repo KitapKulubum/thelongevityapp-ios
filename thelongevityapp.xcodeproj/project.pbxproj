@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		ECEEFCB22EE7310E009CAEB9 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = ECEEFCB12EE7310E009CAEB9 /* FirebaseAuth */; };
+		ECEEFCB42EE7310E009CAEB9 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = ECEEFCB32EE7310E009CAEB9 /* FirebaseCore */; };
+		ECEEFCB62EE7310E009CAEB9 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = ECEEFCB52EE7310E009CAEB9 /* FirebaseFirestore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		ECEEFBD22EE211F5009CAEB9 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -29,9 +35,22 @@
 		ECEEFBDB2EE211F5009CAEB9 /* thelongevityappUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = thelongevityappUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		ECEEFDA12EF2F95B009CAEB9 /* Exceptions for "thelongevityapp" folder in "thelongevityapp" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = ECEEFBC32EE211F2009CAEB9 /* thelongevityapp */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		ECEEFBC62EE211F2009CAEB9 /* thelongevityapp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				ECEEFDA12EF2F95B009CAEB9 /* Exceptions for "thelongevityapp" folder in "thelongevityapp" target */,
+			);
 			path = thelongevityapp;
 			sourceTree = "<group>";
 		};
@@ -52,6 +71,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ECEEFCB42EE7310E009CAEB9 /* FirebaseCore in Frameworks */,
+				ECEEFCB22EE7310E009CAEB9 /* FirebaseAuth in Frameworks */,
+				ECEEFCB62EE7310E009CAEB9 /* FirebaseFirestore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +134,9 @@
 			);
 			name = thelongevityapp;
 			packageProductDependencies = (
+				ECEEFCB12EE7310E009CAEB9 /* FirebaseAuth */,
+				ECEEFCB32EE7310E009CAEB9 /* FirebaseCore */,
+				ECEEFCB52EE7310E009CAEB9 /* FirebaseFirestore */,
 			);
 			productName = thelongevityapp;
 			productReference = ECEEFBC42EE211F2009CAEB9 /* thelongevityapp.app */;
@@ -195,6 +220,9 @@
 			);
 			mainGroup = ECEEFBBB2EE211F2009CAEB9;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				ECEEFCB02EE7310E009CAEB9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = ECEEFBC52EE211F2009CAEB9 /* Products */;
 			projectDirPath = "";
@@ -552,6 +580,35 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		ECEEFCB02EE7310E009CAEB9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.6.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		ECEEFCB12EE7310E009CAEB9 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ECEEFCB02EE7310E009CAEB9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		ECEEFCB32EE7310E009CAEB9 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ECEEFCB02EE7310E009CAEB9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		ECEEFCB52EE7310E009CAEB9 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ECEEFCB02EE7310E009CAEB9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = ECEEFBBC2EE211F2009CAEB9 /* Project object */;
 }

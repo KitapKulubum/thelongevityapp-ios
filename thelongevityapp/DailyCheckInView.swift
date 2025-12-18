@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct DailyCheckInView: View {
+    @EnvironmentObject private var ageStore: AgeStore
     @State private var sleepHours: Double = 7.0
     @State private var stepsText: String = ""
     @State private var vigorousMinutesText: String = ""
@@ -301,38 +302,79 @@ struct DailyCheckInView: View {
 
         isSaving = true
 
+        // Get today's date in ISO format (YYYY-MM-DD)
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let today = dateFormatter.string(from: Date())
+        
+        // Get chronological age from store, or use default
+        let chronologicalAge = ageStore.profileChronologicalAgeYears ?? 32.0
+
         let request = DailyUpdateRequest(
-            userId: "gizem-demo",
-            sleepHours: sleepHours,
-            steps: steps,
-            vigorousMinutes: vigorous,
-            stressLevel: Int(stressLevel),
-            lateCaffeine: lateCaffeine,
-            lateScreenUsage: lateScreenUsage
+            userId: "", // overridden in LongevityAPI with authenticated userId
+            chronologicalAgeYears: chronologicalAge,
+            metrics: .init(
+                date: today,
+                sleepHours: sleepHours,
+                steps: steps,
+                vigorousMinutes: vigorous,
+                processedFoodScore: 3, // Default moderate processed food score
+                alcoholUnits: 0, // Default no alcohol
+                stressLevel: Int(stressLevel),
+                lateCaffeine: lateCaffeine,
+                screenLate: lateScreenUsage,
+                bedtimeHour: bedtimeHour
+            )
         )
 
-        LongevityAPI.shared.submitDailyUpdate(request) { result in
-            DispatchQueue.main.async {
+        Task {
+            await ageStore.submitDailyUpdate(request)
+            
+            await MainActor.run {
                 self.isSaving = false
-            }
-
-            switch result {
-            case .success(let state):
-                DispatchQueue.main.async {
-                    self.currentBiologicalAge = state.currentBiologicalAgeYears
-                    self.agingDebt = state.agingDebtYears
-                    self.rejuvenationStreak = state.rejuvenationStreakDays
-                    self.todayScore = nil
-                    self.todayDeltaYears = nil
-                    self.hasResult = true
-
-                    self.alertMessage = "Today's data saved. Your biological age is updated."
-                    self.showAlert = true
-                }
-            case .failure(let error):
-                print("Daily update error:", error)
-                DispatchQueue.main.async {
+                
+                if let error = ageStore.lastError {
                     self.alertMessage = "Network error: \(error.localizedDescription)"
+                    self.showAlert = true
+                } else {
+                    // Success - refresh all insights data
+                    if let userId = AuthManager.shared.userId {
+                        Task {
+                            await ageStore.refreshAll(userId: userId)
+                        }
+                    }
+                    
+                    // Update local state for display
+                    self.currentBiologicalAge = ageStore.currentBiologicalAgeYears
+                    self.agingDebt = ageStore.agingDebtYears
+                    self.rejuvenationStreak = ageStore.rejuvenationStreakDays
+                    self.hasResult = true
+                    
+                    // Generate message based on current data
+                    var message = "Check-in saved. "
+                    
+                    if let chrono = ageStore.profileChronologicalAgeYears,
+                       let bio = ageStore.currentBiologicalAgeYears {
+                        let diff = bio - chrono
+                        
+                        if diff < 0 {
+                            message += String(format: "Rejuvenation: %.2f years. ", diff)
+                            message += "Bugün gençleşme yönündesin"
+                            if ageStore.rejuvenationStreakDays > 0 {
+                                message += " (+ \(ageStore.rejuvenationStreakDays) day streak)"
+                            }
+                            message += ". "
+                        } else if diff == 0 {
+                            message += "Today: 0.00 years. Bugün stabil, biyolojik yaşın korunuyor. "
+                        } else {
+                            message += String(format: "Aging debt: +%.2f years. ", diff)
+                            message += "Bugün hızlanma var, yarın 1–2 öneri ile düzeltebilirsin. "
+                        }
+                    } else {
+                        message += "Your biological age is updated."
+                    }
+                    
+                    self.alertMessage = message
                     self.showAlert = true
                 }
             }
@@ -369,10 +411,6 @@ struct DailyAgeEntry: Decodable {
     let reasons: [String]
 }
 
-struct AgeStateResponse: Decodable {
-    let state: BiologicalAgeState
-    let today: DailyAgeEntry?
-}
 
 #Preview {
     DailyCheckInView()

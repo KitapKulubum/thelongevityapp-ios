@@ -34,61 +34,81 @@ final class AgeStore: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var lastError: Error?
     
-    func loadState(userId: String) async {
+    // Updated to use new summary endpoint
+    func loadSummary(userId: String) async {
         isLoading = true
         lastError = nil
         
-        let result: Result<AgeStateResponse, Error> = await withCheckedContinuation { continuation in
-            LongevityAPI.shared.fetchAgeState(userId: userId) { response in
-                continuation.resume(returning: response)
-            }
-        }
-        
-        switch result {
-        case .success(let response):
-            updateFromResponse(response)
-        case .failure(let error):
-            print("[AgeStore] Failed to load state: \(error)")
+        do {
+            let summary = try await APIClient.shared.getSummary(userId: userId)
+            updateFromSummary(summary)
+        } catch {
+            print("[AgeStore] Failed to load summary: \(error)")
             lastError = error
         }
         
         isLoading = false
     }
     
+    // Legacy methods - deprecated, use loadSummary instead
+    @available(*, deprecated, message: "Use loadSummary instead")
+    func loadState(userId: String) async {
+        await loadSummary(userId: userId)
+    }
+    
+    @available(*, deprecated, message: "Trend data now comes from summary")
     func loadTrend(userId: String, range: TrendRange) async {
-        // Don't set isLoading here to avoid conflicts with other operations
-        let previousError = lastError
-        
-        let result: Result<TrendResponse, Error> = await withCheckedContinuation { continuation in
-            LongevityAPI.shared.fetchTrend(userId: userId, range: range) { response in
-                continuation.resume(returning: response)
-            }
-        }
-        
-        switch result {
-        case .success(let response):
-            trendPoints = response.points
-            // Clear error only if it was set by a previous trend load
-            if previousError != nil && lastError != nil {
-                lastError = nil
-            }
-        case .failure(let error):
-            print("[AgeStore] Failed to load trend: \(error)")
-            // Only set error if no other operation is in progress
-            if !isLoading {
-            lastError = error
-            }
-        }
+        // No-op: trend data is now part of summary
+        print("[AgeStore] loadTrend is deprecated. Trend data comes from summary.")
     }
     
+    @available(*, deprecated, message: "Use loadSummary instead")
     func refreshAll(userId: String) async {
-        await loadState(userId: userId)
-        await loadTrend(userId: userId, range: selectedRange)
+        await loadSummary(userId: userId)
     }
     
-    // Legacy method for backward compatibility
+    @available(*, deprecated, message: "Use loadSummary instead")
     func refresh(userId: String, chronologicalAgeYears: Int) async {
-        await loadState(userId: userId)
+        await loadSummary(userId: userId)
+    }
+    
+    private func updateFromSummary(_ summary: SummaryDTO) {
+        print("[AgeStore] Updating from summary:")
+        if let bioAge = summary.biologicalAge {
+            print("  - Biological age: \(bioAge)")
+            currentBiologicalAgeYears = bioAge
+        }
+        if let bao = summary.BAOYears {
+            print("  - BAO years: \(bao)")
+        }
+        if let ema7 = summary.ema7 {
+            print("  - EMA7: \(ema7)")
+        }
+        if let ema30 = summary.ema30 {
+            print("  - EMA30: \(ema30)")
+        }
+        if let trend = summary.trendLabel {
+            print("  - Trend: \(trend)")
+        }
+        if let risks = summary.topRiskSystems {
+            print("  - Top risk systems: \(risks)")
+        }
+        
+        // Update legacy state for backward compatibility
+        if let bioAge = summary.biologicalAge {
+            state = BiologicalAgeState(
+                chronologicalAgeYears: bioAge, // Approximate - summary doesn't have CA
+                baselineBiologicalAgeYears: bioAge,
+                currentBiologicalAgeYears: bioAge,
+                agingDebtYears: 0, // Summary doesn't provide this
+                rejuvenationStreakDays: 0,
+                accelerationStreakDays: 0,
+                totalRejuvenationDays: 0,
+                totalAccelerationDays: 0
+            )
+        }
+        
+        print("[AgeStore] Summary updated successfully.")
     }
     
     func submitDailyUpdate(_ requestBody: DailyUpdateRequest) async {

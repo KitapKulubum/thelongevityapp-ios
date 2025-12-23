@@ -15,7 +15,8 @@ final class LongevityAPI {
     // Base URL configuration based on build configuration
     private var baseURL: URL {
         #if DEBUG
-        return URL(string: "http://localhost:4000")!
+        // Use 127.0.0.1 instead of localhost for iOS Simulator compatibility
+        return URL(string: "http://127.0.0.1:4000")!
         #else
         // TODO: Replace with production URL when ready
         return URL(string: "https://api.yourproductiondomain.com")!

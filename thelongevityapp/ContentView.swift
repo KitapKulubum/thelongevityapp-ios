@@ -365,7 +365,8 @@ struct ContentView: View {
         // ... (existing code for sending message) ...
         let baseURL: URL = {
             #if DEBUG
-            return URL(string: "http://localhost:4000")!
+            // Use 127.0.0.1 instead of localhost for iOS Simulator compatibility
+            return URL(string: "http://127.0.0.1:4000")!
             #else
             return URL(string: "https://api.yourproductiondomain.com")!
             #endif

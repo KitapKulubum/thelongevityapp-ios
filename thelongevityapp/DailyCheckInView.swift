@@ -340,7 +340,7 @@ struct DailyCheckInView: View {
                     // Success - refresh all insights data
                     if let userId = AuthManager.shared.userId {
                         Task {
-                            await ageStore.refreshAll(userId: userId)
+                            await ageStore.loadSummary(userId: userId)
                         }
                     }
                     

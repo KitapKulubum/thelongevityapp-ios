@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct MainTabView: View {
-    @StateObject private var ageStore = AgeStore()
+    @StateObject private var scoreViewModel = ScoreViewModel()
     @EnvironmentObject private var appState: AppState
     
     init() {
@@ -38,7 +38,7 @@ struct MainTabView: View {
                 }
                 .tag(Tab.profile)
         }
-        .environmentObject(ageStore)
+        .environmentObject(scoreViewModel)
         .environmentObject(appState)
         .preferredColorScheme(.dark)
         .onAppear {
@@ -46,12 +46,10 @@ struct MainTabView: View {
             Task {
                 await appState.bootstrap()
             }
-            
-            // Also refresh age store for backward compatibility
-            if let userId = AuthManager.shared.userId {
-                Task {
-                    await ageStore.loadSummary(userId: userId)
-                }
+        }
+        .onChange(of: appState.summary?.userId ?? "", initial: false) { _, _ in
+            if let summary = appState.summary {
+                scoreViewModel.apply(summary)
             }
         }
     }
@@ -64,10 +62,10 @@ struct AICoachView: View {
     @State private var chatMessage: String = ""
     
     init() {
-        let tempAppState = AppState(userId: AuthManager.shared.userId ?? "gizem-demo")
+        let tempAppState = AppState(userId: AuthManager.shared.uid ?? "")
         _viewModel = StateObject(wrappedValue: ChatViewModel(appState: tempAppState))
     }
-    
+
     var body: some View {
         let isDailyMode = viewModel.mode == .daily
         let isEmptyDaily = viewModel.messages.isEmpty && viewModel.mode == .daily
@@ -83,19 +81,19 @@ struct AICoachView: View {
                 // Hero message for daily mode
                 VStack {
                     Spacer()
-                    VStack(spacing: 12) {
+                VStack(spacing: 12) {
                         Text("Longevity AI is ready.")
                             .font(.system(size: 20, weight: .medium))
                         Text("Let's optimize your healthspan.")
                             .font(.system(size: 20, weight: .medium))
                     }
                     .foregroundColor(.white.opacity(0.9))
-                    .multilineTextAlignment(.center)
+                            .multilineTextAlignment(.center)
                     .padding(.horizontal, 20)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+                        } else {
                 // Scrollable messages (always visible, but disabled when check-in is active)
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -168,32 +166,14 @@ struct AICoachView: View {
                                     }
                                 }
                                 .padding(.horizontal, 20)
-                                .padding(.top, 8)
-                            }
-                            
-                            // Daily check-in question options (when ACTIVE && expanded)
-                            if viewModel.mode == .daily,
-                               case .active(let expanded) = viewModel.dailyCheckInState,
-                               expanded,
-                               let question = viewModel.currentDailyQuestion,
-                               !viewModel.isSubmitting {
-                                VStack(spacing: 12) {
-                                    ForEach(question.options) { option in
-                                        OptionButton(
-                                            title: option.title,
-                                            isSelected: false,
-                                            action: {
-                                                viewModel.selectDailyOption(option)
-                                            }
-                                        )
-                                    }
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.top, 8)
-                            }
+                        .padding(.top, 8)
+                    }
+
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 16)
+                        // Add extra bottom space when input is disabled to avoid overlap
+                        .padding(.bottom, viewModel.chatInputEnabled ? 0 : 80)
                     }
                     .disabled(viewModel.isChatDisabled)
                     .onChange(of: viewModel.messages.count) {
@@ -553,69 +533,170 @@ struct CheckInButton: View {
 
 // MARK: - Longevity Trend View (Score Screen)
 struct LongevityTrendView: View {
-    @EnvironmentObject private var ageStore: AgeStore
+    @EnvironmentObject private var scoreViewModel: ScoreViewModel
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @State private var selectedRange: TrendRange = .weekly
     
     // Design tokens
     private let screenPadding: CGFloat = 20
     private let sectionSpacing: CGFloat = 24
     private let cardRadius: CGFloat = 20
     
+    // Derived helpers to keep the body simpler for the compiler
+    private var currentHistory: [HistoryPoint] {
+        switch selectedRange {
+        case .weekly:
+            return scoreViewModel.weeklyHistory
+        case .monthly:
+            return scoreViewModel.monthlyHistory
+        case .yearly:
+            return scoreViewModel.yearlyHistory
+        }
+    }
+    
+    private var placeholderText: String {
+        switch selectedRange {
+        case .weekly:
+            return "Not enough data for a weekly trend yet. Keep logging your daily check-ins."
+        case .monthly:
+            return "Not enough data for a monthly trend yet."
+        case .yearly:
+            return "Not enough data for a yearly trend yet."
+        }
+    }
+    
+    @ViewBuilder
+    private func trendSection() -> some View {
+        if currentHistory.count >= 2 {
+            TrendChartView(points: currentHistory)
+                .frame(height: 240)
+                .padding(.horizontal, screenPadding)
+                .padding(.bottom, sectionSpacing)
+        } else {
+            VStack(spacing: 12) {
+                Text(placeholderText)
+                    .font(.system(size: 12))
+                    .foregroundColor(.gray)
+            }
+            .frame(height: 240)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, screenPadding)
+            .padding(.bottom, sectionSpacing)
+        }
+    }
+    
+    @ViewBuilder
+    private func metricsRow() -> some View {
+        HStack(spacing: 24) {
+            MetricCard(
+                title: "AGING DEBT",
+                value: String(format: "%+.2fy", scoreViewModel.agingDebtYears),
+                isGood: scoreViewModel.agingDebtYears <= 0
+            )
+            
+            MetricCard(
+                title: "TODAY Δ",
+                value: String(format: "%+.2fy", scoreViewModel.todayDeltaYears ?? 0),
+                isGood: (scoreViewModel.todayDeltaYears ?? 0) <= 0
+            )
+            
+            Spacer()
+            
+            if scoreViewModel.rejuvenationStreakDays > 0 {
+                streakBadge()
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func streakBadge() -> some View {
+        HStack(spacing: 6) {
+            Text("🔥")
+            Text("\(scoreViewModel.rejuvenationStreakDays) DAY STREAK")
+                .font(.system(size: 10, weight: .bold))
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Capsule().fill(Color.white.opacity(0.08)))
+    }
+    
+    @ViewBuilder
+    private func shareRow() -> some View {
+        HStack(spacing: 20) {
+            Text("SHARE INSIGHTS")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(.white.opacity(0.3))
+                .kerning(1)
+            
+            Spacer()
+            
+            HStack(spacing: 16) {
+                ShareIconButton(icon: "circle.grid.2x2.fill")
+                ShareIconButton(icon: "music.note")
+                ShareIconButton(icon: "square.and.arrow.up")
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func headerRow(diff: Double, isGood: Bool) -> some View {
+        HStack {
+            Button(action: {}) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(12)
+                    .background(Circle().fill(Color.white.opacity(0.05)))
+            }
+            .frame(width: 44, height: 44)
+            
+            Spacer()
+            
+            Text("LONGEVITY AGE & TREND")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(.white.opacity(0.6))
+                .kerning(1.5)
+            
+            Spacer()
+            
+            statusChip(diff: diff, isGood: isGood)
+        }
+    }
+    
+    @ViewBuilder
+    private func statusChip(diff: Double, isGood: Bool) -> some View {
+        HStack(spacing: 6) {
+            Text(isGood ? "✨" : "↗")
+            Text(String(format: "%@: %+.1fy", isGood ? "Rejuvenation" : "Acceleration", diff))
+                .font(.system(size: 11, weight: .bold))
+        }
+        .foregroundColor(isGood ? .green : .orange)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            Capsule()
+                .fill((isGood ? Color.green : Color.orange).opacity(0.1))
+                .overlay(
+                    Capsule()
+                        .stroke((isGood ? Color.green : Color.orange).opacity(0.2), lineWidth: 1)
+                )
+        )
+        .shadow(color: (isGood ? Color.green : Color.orange).opacity(0.2), radius: 8)
+    }
+    
     var body: some View {
+        let diff = scoreViewModel.biologicalAgeYears - scoreViewModel.chronologicalAgeYears
+        let isGood = diff <= 0
+        
         ZStack {
             Color.black.ignoresSafeArea()
             
             ScrollView {
                 VStack(spacing: 0) {
                     // 1. Header Row
-                    HStack {
-                        Button(action: {}) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.white)
-                                .padding(12)
-                                .background(Circle().fill(Color.white.opacity(0.05)))
-                        }
-                        .frame(width: 44, height: 44)
-                        
-                        Spacer()
-                        
-                        Text("LONGEVITY AGE & TREND")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.white.opacity(0.6))
-                            .kerning(1.5)
-                        
-                        Spacer()
-                        
-                        // Rejuvenation/Acceleration Chip
-                        if let ca = ageStore.profileChronologicalAgeYears,
-                           let ba = ageStore.currentBiologicalAgeYears {
-                            let diff = ba - ca
-                            let isGood = diff <= 0
-                            
-                            HStack(spacing: 6) {
-                                Text(isGood ? "✨" : "↗")
-                                Text(String(format: "%@: %+.1fy", isGood ? "Rejuvenation" : "Acceleration", diff))
-                                    .font(.system(size: 11, weight: .bold))
-                            }
-                            .foregroundColor(isGood ? .green : .orange)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(
-                                Capsule()
-                                    .fill((isGood ? Color.green : Color.orange).opacity(0.1))
-                                    .overlay(
-                                        Capsule()
-                                            .stroke((isGood ? Color.green : Color.orange).opacity(0.2), lineWidth: 1)
-                                    )
-                            )
-                            .shadow(color: (isGood ? Color.green : Color.orange).opacity(0.2), radius: 8)
-                } else {
-                            // Placeholder to maintain layout
-                            Color.clear.frame(width: 44, height: 44)
-                        }
-                    }
+                    headerRow(diff: diff, isGood: isGood)
                     .padding(.horizontal, screenPadding)
                     .padding(.top, 16)
                     .padding(.bottom, 32)
@@ -623,22 +704,14 @@ struct LongevityTrendView: View {
                     // 2. Main Stats Block (Chronological & Biological)
                     HStack(spacing: 24) {
                         StatColumn(
-                            value: {
-                                if let ca = ageStore.profileChronologicalAgeYears {
-                                    return ca
-                                } else if let bio = appState.summary?.biologicalAge {
-                                    return bio
-                                } else {
-                                    return 32.0
-                                }
-                            }(),
+                            value: scoreViewModel.chronologicalAgeYears,
                             label: "CHRONOLOGICAL",
                             color: .white.opacity(0.4),
                             labelColor: .white.opacity(0.3)
                         )
                         
                         StatColumn(
-                            value: ageStore.currentBiologicalAgeYears ?? appState.summary?.biologicalAge ?? 32.0,
+                            value: scoreViewModel.biologicalAgeYears,
                             label: "BIOLOGICAL",
                             color: .green,
                             labelColor: .green.opacity(0.6),
@@ -648,65 +721,20 @@ struct LongevityTrendView: View {
                     .padding(.horizontal, screenPadding)
                     .padding(.bottom, sectionSpacing)
                     
-                    // BAO Years display (if available from summary)
-                    if let baoYears = appState.summary?.BAOYears {
-                        HStack {
-                            Text("BAO: \(String(format: "%+.1f", baoYears)) years")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(baoYears < 0 ? .green : .orange)
-                        }
-                        .padding(.horizontal, screenPadding)
-                        .padding(.bottom, 8)
-                    }
-                    
-                    // Top Risk Systems (if available from summary)
-                    if let topRisks = appState.summary?.topRiskSystems, !topRisks.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("TOP RISK SYSTEMS")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white.opacity(0.4))
-                                .kerning(1)
-                            
-                            HStack(spacing: 8) {
-                                ForEach(topRisks.prefix(3), id: \.self) { risk in
-                                    Text(risk.uppercased())
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundColor(.orange)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(
-                                            Capsule()
-                                                .fill(Color.orange.opacity(0.1))
-                                                .overlay(
-                                                    Capsule()
-                                                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-                                                )
-                                        )
-                                }
-                            }
-                        }
-                        .padding(.horizontal, screenPadding)
-                        .padding(.bottom, sectionSpacing)
-                    }
-                    
                     // 3. Time Range Segmented Control
                     HStack(spacing: 4) {
                         ForEach([TrendRange.weekly, .monthly, .yearly], id: \.self) { range in
                             Button(action: {
-                                ageStore.selectedRange = range
-                                // Trend data now comes from summary, no separate call needed
-                                if let userId = AuthManager.shared.userId {
-                                    Task { await ageStore.loadSummary(userId: userId) }
-                                }
+                                selectedRange = range
                             }) {
                                 Text(range.rawValue.uppercased())
                                     .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(ageStore.selectedRange == range ? .black : .white.opacity(0.6))
+                                    .foregroundColor(selectedRange == range ? .black : .white.opacity(0.6))
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
                                     .background(
                                         Capsule()
-                                            .fill(ageStore.selectedRange == range ? Color.green : Color.clear)
+                                            .fill(selectedRange == range ? Color.green : Color.clear)
                                     )
                             }
                         }
@@ -720,76 +748,29 @@ struct LongevityTrendView: View {
                     .padding(.horizontal, screenPadding)
                     .padding(.bottom, sectionSpacing)
                     
-                    // 4. Trend Graph Area
-                    if !ageStore.trendPoints.isEmpty {
-                        TrendChartView(points: ageStore.trendPoints)
-                            .frame(height: 240)
-                            .padding(.horizontal, screenPadding)
-                            .padding(.bottom, sectionSpacing)
-                    } else {
-                        VStack(spacing: 12) {
-                            ProgressView()
-                                .tint(.green)
-                            Text("Analyzing longevity trend...")
-                                .font(.system(size: 12))
-                                .foregroundColor(.gray)
-                        }
-                        .frame(height: 240)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, screenPadding)
-                        .padding(.bottom, sectionSpacing)
-                    }
+                    // 4. Trend Graph Area with empty-state handling
+                    trendSection()
                     
                     // 5. Metrics Row (Aging Debt / Today Δ)
-                    HStack(spacing: 24) {
-                        MetricCard(
-                            title: "AGING DEBT",
-                            value: String(format: "%+.2fy", ageStore.agingDebtYears ?? 0),
-                            isGood: (ageStore.agingDebtYears ?? 0) <= 0
-                        )
-                        
-                        MetricCard(
-                            title: "TODAY Δ",
-                            value: String(format: "%+.2fy", ageStore.todayDeltaYears ?? 0),
-                            isGood: (ageStore.todayDeltaYears ?? 0) <= 0
-                        )
-                        
-                        Spacer()
-                        
-                        // Streak Badge
-                            if ageStore.rejuvenationStreakDays > 0 {
-                            HStack(spacing: 6) {
-                                Text("🔥")
-                                Text("\(ageStore.rejuvenationStreakDays) DAY STREAK")
-                                    .font(.system(size: 10, weight: .bold))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Capsule().fill(Color.white.opacity(0.08)))
-                        }
-                    }
+                    metricsRow()
                     .padding(.horizontal, screenPadding)
                     .padding(.bottom, sectionSpacing)
                     
                     // 6. Share Insights Row
-                    HStack(spacing: 20) {
-                        Text("SHARE INSIGHTS")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.white.opacity(0.3))
-                            .kerning(1)
-                        
-                        Spacer()
-                        
-                        HStack(spacing: 16) {
-                            ShareIconButton(icon: "circle.grid.2x2.fill")
-                            ShareIconButton(icon: "music.note")
-                            ShareIconButton(icon: "square.and.arrow.up")
-                        }
-                    }
+                    shareRow()
                     .padding(.horizontal, screenPadding)
                     .padding(.bottom, 100) // Extra padding to avoid TabBar overlap
                 }
+            }
+        }
+        .onAppear {
+            Task {
+                await scoreViewModel.fetchSummary()
+            }
+        }
+        .onChange(of: appState.summary?.userId ?? "", initial: false) { _, _ in
+            if let summary = appState.summary {
+                scoreViewModel.apply(summary)
             }
         }
     }
@@ -855,7 +836,7 @@ struct ShareIconButton: View {
 // MARK: - Daily Check-In Sheet
 
 struct TrendChartView: View {
-    let points: [TrendPoint]
+    let points: [HistoryPoint]
     
     var body: some View {
         GeometryReader { geometry in
@@ -956,13 +937,13 @@ struct DailyCheckInSheet: View {
     @State private var lateScreenUsage: Bool = false
     @State private var bedtimeHour: Double = 22.0
     @State private var isSubmitting = false
-    
+
     var body: some View {
         NavigationView {
             ZStack {
                 Color.black
                     .ignoresSafeArea()
-                
+
                 Form {
                     Section(header: Text("Sleep").foregroundColor(.white)) {
                         Stepper("Sleep Hours: \(String(format: "%.1f", sleepHours))", value: $sleepHours, in: 0...12, step: 0.5)
@@ -1000,7 +981,7 @@ struct DailyCheckInSheet: View {
                                 if isSubmitting {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
-            } else {
+                        } else {
                                     Text("Submit Check-In")
                                         .fontWeight(.semibold)
             }
@@ -1032,17 +1013,11 @@ struct DailyCheckInSheet: View {
     }
     
     private func submitCheckIn() {
-        guard let userId = AuthManager.shared.userId else {
-            return
-        }
-        
         isSubmitting = true
         
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
         let today = dateFormatter.string(from: Date())
-        
-        let chronologicalAge = ageStore.profileChronologicalAgeYears ?? 32.0
         
         let metrics = DailyUpdateRequest.Metrics(
             date: today,
@@ -1057,13 +1032,9 @@ struct DailyCheckInSheet: View {
             bedtimeHour: bedtimeHour
         )
         
-        let request = DailyUpdateRequest(
-            userId: userId,
-            chronologicalAgeYears: chronologicalAge,
-            metrics: metrics
-        )
+        let request = DailyUpdateRequest(metrics: metrics)
         
-        Task {
+                    Task {
             await ageStore.submitDailyUpdate(request)
             await MainActor.run {
                 isSubmitting = false
@@ -1182,9 +1153,9 @@ struct ProfileView: View {
                                 
                                 Image(systemName: "brain.head.profile")
                                     .font(.system(size: 24))
-                                    .foregroundColor(.green)
-                            }
-                        }
+                    .foregroundColor(.green)
+            }
+        }
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 40)
@@ -1329,7 +1300,7 @@ struct ProfileView: View {
                                 endPoint: .trailing
                             )
                         )
-                        .cornerRadius(16)
+                    .cornerRadius(16)
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 12)
@@ -1495,8 +1466,8 @@ struct DailyCheckInPinnedCard: View {
                     Text("Daily Check-in Complete")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
-                    
-                    Spacer()
+
+                Spacer()
                     
                     Button(action: {
                         withAnimation {

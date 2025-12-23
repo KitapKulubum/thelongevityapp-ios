@@ -11,7 +11,7 @@ import SwiftUI
 @MainActor
 final class AgeViewModel: ObservableObject {
     @Published var state: BiologicalAgeState?
-    @Published var today: DailyAgeEntry?
+    @Published var today: TodayEntry?
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
     
@@ -19,8 +19,8 @@ final class AgeViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        guard let userId = AuthManager.shared.userId else {
-            errorMessage = "User ID is missing. Please sign in."
+        guard let userId = AuthManager.shared.uid else {
+            errorMessage = "User is missing. Please sign in."
             isLoading = false
             return
         }

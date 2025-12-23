@@ -8,8 +8,6 @@
 import Foundation
 
 struct DailyUpdateRequest: Encodable {
-    let userId: String
-    let chronologicalAgeYears: Double
     let metrics: Metrics
     
     struct Metrics: Encodable {

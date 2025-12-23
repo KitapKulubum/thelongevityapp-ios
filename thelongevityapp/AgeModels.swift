@@ -22,7 +22,7 @@ struct TrendPoint: Decodable, Identifiable {
     let agingDebtYears: Double
 }
 
-// Trend response model
+// Trend response model (legacy)
 struct TrendResponse: Decodable {
     let range: String
     let points: [TrendPoint]
@@ -38,13 +38,47 @@ struct TrendResponse: Decodable {
     }
 }
 
-// Chat request model
-struct ChatRequest: Encodable {
-    let userId: String
-    let message: String
+// MARK: - Stats Summary & History
+
+struct HistoryPoint: Codable, Identifiable {
+    var id = UUID()
+    let date: String
+    let biologicalAgeYears: Double
+    let deltaYears: Double
+    let score: Int
 }
 
-// Chat response model
+struct BiologicalAgeState: Codable {
+    let chronologicalAgeYears: Double
+    let baselineBiologicalAgeYears: Double
+    let currentBiologicalAgeYears: Double
+    let agingDebtYears: Double
+    let rejuvenationStreakDays: Int
+    let accelerationStreakDays: Int
+    let totalRejuvenationDays: Int
+    let totalAccelerationDays: Int
+}
+
+struct TodayEntry: Codable {
+    let date: String
+    let score: Int
+    let deltaYears: Double
+    let reasons: [String]
+}
+
+struct StatsSummaryResponse: Codable {
+    let userId: String
+    let state: BiologicalAgeState
+    let today: TodayEntry?
+    let weeklyHistory: [HistoryPoint]
+    let monthlyHistory: [HistoryPoint]
+    let yearlyHistory: [HistoryPoint]
+}
+
+// Chat request/response kept for potential future use
+struct ChatRequest: Encodable {
+    let message: String
+}
 struct ChatResponse: Decodable {
     let answer: String
 }
@@ -116,54 +150,39 @@ struct OnboardingAnswersPayload: Codable {
     let energyFocus: Double
 }
 
-struct DailyAnswersPayload: Codable {
-    let sleep: Double
-    let movement: Double
-    let foodQuality: Double
-    let sugar: Double
-    let stress: Double
-    let mentalLoad: Double
-    let moodSocial: Double
-    let bodyFeel: Double
-    let inflammationSignal: Double
-    let selfCare: Double
+struct DailyMetricsPayload: Codable {
+    let date: String
+    let sleepHours: Double
+    let steps: Int
+    let vigorousMinutes: Int
+    let processedFoodScore: Int
+    let alcoholUnits: Int
+    let stressLevel: Int
+    let lateCaffeine: Bool
+    let screenLate: Bool
+    let bedtimeHour: Double
 }
 
 struct OnboardingSubmitRequest: Codable {
-    let userId: String
-    let chronologicalAge: Int
+    let chronologicalAgeYears: Double
     let answers: OnboardingAnswersPayload
 }
 
 struct OnboardingResultDTO: Codable {
-    let totalScore: Double
+    let userId: String
+    let chronologicalAgeYears: Double
+    let baselineBiologicalAgeYears: Double
+    let currentBiologicalAgeYears: Double
     let BAOYears: Double
-    let biologicalAge: Double
-    let agingSpeedLabel: String
-    let systemScores: [String: Double]
-    let topRiskSystems: [String]
+    let totalScore: Double
 }
 
 struct DailySubmitRequest: Codable {
-    let userId: String
-    let date: String // "YYYY-MM-DD"
-    let answers: DailyAnswersPayload
+    let metrics: DailyMetricsPayload
 }
 
 struct DailyResultDTO: Codable {
-    let dailyScore: Double
-    let dailyAgingDays: Double
-    let ema7: Double
-    let ema30: Double
-    let trendLabel: String
-}
-
-struct SummaryDTO: Codable {
-    let biologicalAge: Double?
-    let BAOYears: Double?
-    let ema7: Double?
-    let ema30: Double?
-    let trendLabel: String?
-    let topRiskSystems: [String]?
+    let state: BiologicalAgeState
+    let today: TodayEntry?
 }
 

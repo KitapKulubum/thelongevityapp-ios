@@ -9,6 +9,7 @@ import SwiftUI
 
 struct DailyCheckInView: View {
     @EnvironmentObject private var ageStore: AgeStore
+    @EnvironmentObject private var scoreViewModel: ScoreViewModel
     @State private var sleepHours: Double = 7.0
     @State private var stepsText: String = ""
     @State private var vigorousMinutesText: String = ""
@@ -307,12 +308,7 @@ struct DailyCheckInView: View {
         dateFormatter.dateFormat = "yyyy-MM-dd"
         let today = dateFormatter.string(from: Date())
         
-        // Get chronological age from store, or use default
-        let chronologicalAge = ageStore.profileChronologicalAgeYears ?? 32.0
-
         let request = DailyUpdateRequest(
-            userId: "", // overridden in LongevityAPI with authenticated userId
-            chronologicalAgeYears: chronologicalAge,
             metrics: .init(
                 date: today,
                 sleepHours: sleepHours,
@@ -338,10 +334,9 @@ struct DailyCheckInView: View {
                     self.showAlert = true
                 } else {
                     // Success - refresh all insights data
-                    if let userId = AuthManager.shared.userId {
-                        Task {
-                            await ageStore.loadSummary(userId: userId)
-                        }
+                    Task {
+                        await ageStore.loadSummary()
+                        await scoreViewModel.fetchSummary()
                     }
                     
                     // Update local state for display
@@ -349,6 +344,17 @@ struct DailyCheckInView: View {
                     self.agingDebt = ageStore.agingDebtYears
                     self.rejuvenationStreak = ageStore.rejuvenationStreakDays
                     self.hasResult = true
+                    
+                    // Push latest state into shared ScoreViewModel so Score tab updates immediately.
+                    if let state = ageStore.state {
+                        scoreViewModel.chronologicalAgeYears = state.chronologicalAgeYears // chronological age is fixed from backend
+                        scoreViewModel.biologicalAgeYears = state.currentBiologicalAgeYears
+                        scoreViewModel.agingDebtYears = state.agingDebtYears
+                        scoreViewModel.rejuvenationStreakDays = state.rejuvenationStreakDays
+                        scoreViewModel.accelerationStreakDays = state.accelerationStreakDays
+                        scoreViewModel.totalRejuvenationDays = state.totalRejuvenationDays
+                        scoreViewModel.totalAccelerationDays = state.totalAccelerationDays
+                    }
                     
                     // Generate message based on current data
                     var message = "Check-in saved. "
@@ -381,38 +387,10 @@ struct DailyCheckInView: View {
         }
     }
 }
-struct DailyUpdateResponse: Decodable {
-    let state: BiologicalAgeState
-    let today: TodayEntry
-}
-
-struct BiologicalAgeState: Decodable {
-    let chronologicalAgeYears: Double
-    let baselineBiologicalAgeYears: Double
-    let currentBiologicalAgeYears: Double
-    let agingDebtYears: Double
-    let rejuvenationStreakDays: Int
-    let accelerationStreakDays: Int
-    let totalRejuvenationDays: Int
-    let totalAccelerationDays: Int
-}
-
-struct TodayEntry: Decodable {
-    let date: String
-    let score: Int
-    let deltaYears: Double
-    let reasons: [String]
-}
-
-struct DailyAgeEntry: Decodable {
-    let date: String
-    let score: Int
-    let deltaYears: Double
-    let reasons: [String]
-}
-
 
 #Preview {
     DailyCheckInView()
+        .environmentObject(AgeStore())
+        .environmentObject(ScoreViewModel())
 }
 

@@ -19,7 +19,7 @@ class AppState: ObservableObject {
     @Published var userId: String
     @Published var hasCompletedOnboarding: Bool = false
     @Published var lastDailyDateSubmitted: String?
-    @Published var summary: SummaryDTO?
+    @Published var summary: StatsSummaryResponse?
     @Published var activeTab: Tab = .chat
     
     private let userDefaults = UserDefaults.standard
@@ -38,18 +38,19 @@ class AppState: ObservableObject {
         
         // Load cached summary if available
         if let summaryData = userDefaults.data(forKey: cachedSummaryKey),
-           let decoded = try? JSONDecoder().decode(SummaryDTO.self, from: summaryData) {
+           let decoded = try? JSONDecoder().decode(StatsSummaryResponse.self, from: summaryData) {
             summary = decoded
         }
         
-        // Fetch fresh summary from backend
+        // Fetch fresh summary from backend (requires auth token)
         do {
-            let freshSummary = try await APIClient.shared.getSummary(userId: userId)
+            let freshSummary = try await APIClient.shared.getSummary()
+            userId = freshSummary.userId
             summary = freshSummary
             saveCachedSummary(freshSummary)
         } catch {
             print("[AppState] Failed to fetch summary: \(error)")
-            // Keep cached summary if fetch fails
+            // Keep cached summary if fetch fails (e.g., not signed in yet)
         }
         
         // Set default tab based on onboarding status
@@ -68,12 +69,12 @@ class AppState: ObservableObject {
         userDefaults.set(date, forKey: lastDailyDateSubmittedKey)
     }
     
-    func updateSummary(_ newSummary: SummaryDTO) {
+    func updateSummary(_ newSummary: StatsSummaryResponse) {
         summary = newSummary
         saveCachedSummary(newSummary)
     }
     
-    private func saveCachedSummary(_ summary: SummaryDTO) {
+    private func saveCachedSummary(_ summary: StatsSummaryResponse) {
         if let encoded = try? JSONEncoder().encode(summary) {
             userDefaults.set(encoded, forKey: cachedSummaryKey)
         }

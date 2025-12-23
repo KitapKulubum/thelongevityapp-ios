@@ -24,8 +24,6 @@ final class DailyCheckinService {
     }
     
     func submitDailyCheckin(
-        userId: String,
-        chronologicalAgeYears: Double,
         date: String,
         sleepHours: Double,
         steps: Int,
@@ -57,11 +55,7 @@ final class DailyCheckinService {
             bedtimeHour: bedtimeHour
         )
         
-        let requestBody = DailyCheckinRequest(
-            userId: userId,
-            chronologicalAgeYears: chronologicalAgeYears,
-            metrics: metrics
-        )
+        let requestBody = DailyCheckinRequest(metrics: metrics)
         
         do {
             request.httpBody = try JSONEncoder().encode(requestBody)
@@ -95,8 +89,6 @@ final class DailyCheckinService {
 
 // Request structure matching the exact JSON payload
 private struct DailyCheckinRequest: Encodable {
-    let userId: String
-    let chronologicalAgeYears: Double
     let metrics: DailyCheckinMetrics
 }
 
@@ -116,6 +108,6 @@ private struct DailyCheckinMetrics: Encodable {
 // Response model
 struct DailyAgeResponse: Decodable {
     let state: BiologicalAgeState
-    let today: DailyAgeEntry?
+    let today: TodayEntry?
 }
 

@@ -181,7 +181,7 @@ class ChatViewModel: ObservableObject {
                 // Get chronological age - should be provided by user or from backend
                 // For now, use a default or get from AgeStore if available
                 // TODO: Add chronological age input during onboarding
-                let chronologicalAge = 32 // Default fallback - should be user input
+                let chronologicalAge = 32.0 // Default fallback - should be user input
                 
                 // Build payload from answers
         let payload = OnboardingAnswersPayload(
@@ -197,11 +197,10 @@ class ChatViewModel: ObservableObject {
             energyFocus: onboardingAnswers["energyFocus"] ?? 0
         )
         
-        let request = OnboardingSubmitRequest(
-            userId: appState.userId,
-            chronologicalAge: chronologicalAge,
-            answers: payload
-        )
+                let request = OnboardingSubmitRequest(
+                    chronologicalAgeYears: chronologicalAge,
+                    answers: payload
+                )
                 
                 // Cache request for retry
                 cachedOnboardingRequest = request
@@ -210,16 +209,15 @@ class ChatViewModel: ObservableObject {
                 let result = try await APIClient.shared.postOnboarding(request)
                 
                 // Build explanation message
-                let ageDiff = result.BAOYears
-                let ageDirection = ageDiff < 0 ? "younger" : "older"
-                let ageText = String(format: "%.1f", abs(ageDiff))
-                
-                let topRisks = result.topRiskSystems.prefix(2).joined(separator: ", ")
-                
+                let bioAge = result.currentBiologicalAgeYears
+                let diff = bioAge - result.chronologicalAgeYears
+                let direction = diff >= 0 ? "older" : "younger"
+                let diffText = String(format: "%.1f", abs(diff))
                 let explanation = """
-                Your estimated biological age is \(String(format: "%.1f", result.biologicalAge)) years (\(ageText) years \(ageDirection) than your chronological age).
+                Your estimated biological age is \(String(format: "%.1f", bioAge)) years (\(diffText) years \(direction) than your chronological age).
                 
-                Main drivers: \(topRisks)
+                Total score: \(String(format: "%.0f", result.totalScore))
+                Baseline offset (BAOYears): \(String(format: "%.1f", result.BAOYears))
                 
                 This is a lifestyle-based estimate, not medical advice.
                 """
@@ -238,7 +236,7 @@ class ChatViewModel: ObservableObject {
                     // Refresh summary
                     Task {
                         do {
-                            let summary = try await APIClient.shared.getSummary(userId: appState.userId)
+                            let summary = try await APIClient.shared.getSummary()
                             await MainActor.run {
                                 appState.updateSummary(summary)
                             }
@@ -305,15 +303,15 @@ class ChatViewModel: ObservableObject {
             do {
                 let result = try await APIClient.shared.postOnboarding(request)
                 
-                let ageDiff = result.BAOYears
-                let ageDirection = ageDiff < 0 ? "younger" : "older"
-                let ageText = String(format: "%.1f", abs(ageDiff))
-                let topRisks = result.topRiskSystems.prefix(2).joined(separator: ", ")
-                
+                let bioAge = result.currentBiologicalAgeYears
+                let diff = bioAge - result.chronologicalAgeYears
+                let direction = diff >= 0 ? "older" : "younger"
+                let diffText = String(format: "%.1f", abs(diff))
                 let explanation = """
-                Your estimated biological age is \(String(format: "%.1f", result.biologicalAge)) years (\(ageText) years \(ageDirection) than your chronological age).
+                Your estimated biological age is \(String(format: "%.1f", bioAge)) years (\(diffText) years \(direction) than your chronological age).
                 
-                Main drivers: \(topRisks)
+                Total score: \(String(format: "%.0f", result.totalScore))
+                Baseline offset (BAOYears): \(String(format: "%.1f", result.BAOYears))
                 
                 This is a lifestyle-based estimate, not medical advice.
                 """
@@ -331,7 +329,7 @@ class ChatViewModel: ObservableObject {
                     
                     Task {
                         do {
-                            let summary = try await APIClient.shared.getSummary(userId: appState.userId)
+                            let summary = try await APIClient.shared.getSummary()
                             await MainActor.run {
                                 appState.updateSummary(summary)
                             }
@@ -403,31 +401,17 @@ class ChatViewModel: ObservableObject {
         Task {
             do {
                 let today = DateFormatter.yyyyMMdd.string(from: Date())
+                let metrics = buildDailyMetricsPayload(for: today)
                 
-        let payload = DailyAnswersPayload(
-            sleep: dailyAnswers["sleep"] ?? 0,
-            movement: dailyAnswers["movement"] ?? 0,
-            foodQuality: dailyAnswers["foodQuality"] ?? 0,
-            sugar: dailyAnswers["sugar"] ?? 0,
-            stress: dailyAnswers["stress"] ?? 0,
-            mentalLoad: dailyAnswers["mentalLoad"] ?? 0,
-            moodSocial: dailyAnswers["moodSocial"] ?? 0,
-            bodyFeel: dailyAnswers["bodyFeel"] ?? 0,
-            inflammationSignal: dailyAnswers["inflammationSignal"] ?? 0,
-            selfCare: dailyAnswers["selfCare"] ?? 0
-        )
-        
-        let request = DailySubmitRequest(
-            userId: appState.userId,
-                    date: today,
-            answers: payload
+                let request = DailySubmitRequest(
+                    metrics: metrics
                 )
                 
                 // Cache request for retry
                 cachedDailyRequest = request
                 lastFailedAction = .submitDaily
                 
-                _ = try await APIClient.shared.postDaily(request)
+                let result = try await APIClient.shared.postDaily(request)
                 
                 await MainActor.run {
                     appState.updateLastDailyDate(today)
@@ -436,10 +420,29 @@ class ChatViewModel: ObservableObject {
                     // Set state to completed
                     dailyCheckInState = .completed
                     
-                    // Optionally add one completion message (only once)
+                    // Completion message with insight and follow-up
+                    let completionText: String
+                    if let todayEntry = result.today {
+                        let delta = String(format: "%.2f", todayEntry.deltaYears)
+                        completionText = """
+                        Daily check-in completed ✅
+                        
+                        Today's aging: \(delta) years
+                        Score: \(todayEntry.score)
+                        
+                        Want a quick plan to improve tomorrow's score?
+                        """
+                    } else {
+                        completionText = """
+                        Daily check-in completed ✅
+                        
+                        Want a quick plan to improve tomorrow's score?
+                        """
+                    }
+                    
                     let completionMessage = ChatMessage(
                         role: .assistant,
-                        text: "Daily check-in completed ✅",
+                        text: completionText,
                         timestamp: Date()
                     )
                     messages.append(completionMessage)
@@ -447,7 +450,7 @@ class ChatViewModel: ObservableObject {
                     // Refresh summary
                     Task {
                         do {
-                            let summary = try await APIClient.shared.getSummary(userId: appState.userId)
+                            let summary = try await APIClient.shared.getSummary()
                             await MainActor.run {
                                 appState.updateSummary(summary)
                             }
@@ -483,19 +486,38 @@ class ChatViewModel: ObservableObject {
         
         Task {
             do {
-                _ = try await APIClient.shared.postDaily(request)
+                let result = try await APIClient.shared.postDaily(request)
                 
                 await MainActor.run {
-                    appState.updateLastDailyDate(request.date)
+                    appState.updateLastDailyDate(request.metrics.date)
                     submitState = .success
                     
                     // Set state to completed
                     dailyCheckInState = .completed
                     
-                    // Optionally add one completion message (only once)
+                    // Completion message with insight and follow-up
+                    let completionText: String
+                    if let todayEntry = result.today {
+                        let delta = String(format: "%.2f", todayEntry.deltaYears)
+                        completionText = """
+                        Daily check-in completed ✅
+                        
+                        Today's aging: \(delta) years
+                        Score: \(todayEntry.score)
+                        
+                        Want a quick plan to improve tomorrow's score?
+                        """
+                    } else {
+                        completionText = """
+                        Daily check-in completed ✅
+                        
+                        Want a quick plan to improve tomorrow's score?
+                        """
+                    }
+                    
                     let completionMessage = ChatMessage(
                         role: .assistant,
-                        text: "Daily check-in completed ✅",
+                        text: completionText,
                         timestamp: Date()
                     )
                     messages.append(completionMessage)
@@ -503,7 +525,7 @@ class ChatViewModel: ObservableObject {
                     // Refresh summary
                     Task {
                         do {
-                            let summary = try await APIClient.shared.getSummary(userId: appState.userId)
+                            let summary = try await APIClient.shared.getSummary()
                             await MainActor.run {
                                 appState.updateSummary(summary)
                             }
@@ -588,5 +610,55 @@ class ChatViewModel: ObservableObject {
                 }
             }
         }
+    }
+    
+    // MARK: - Helpers
+    
+    private func buildDailyMetricsPayload(for date: String) -> DailyMetricsPayload {
+        let sleepScore = dailyAnswers["sleep"] ?? 0
+        let movementScore = dailyAnswers["movement"] ?? 0
+        let foodScore = dailyAnswers["foodQuality"] ?? 0
+        let sugarScore = dailyAnswers["sugar"] ?? 0
+        let stressScore = dailyAnswers["stress"] ?? 0
+        let selfCareScore = dailyAnswers["selfCare"] ?? 0
+        
+        // Map -1...1 to reasonable metric defaults
+        let sleepHours = clamp(7.0 + sleepScore * 1.5, min: 4.0, max: 9.0)
+        let steps = Int(clamp(6000 + movementScore * 3000, min: 1000, max: 15000))
+        let vigorousMinutes = Int(clamp(30 + movementScore * 30, min: 0, max: 90))
+        
+        // Processed food score: 1 (good) ... 5 (poor)
+        let nutritionScore = (foodScore + sugarScore) / 2
+        let processedFoodScore = Int(clamp(3 - nutritionScore * 2, min: 1, max: 5))
+        
+        // Alcohol units: 0-3 based on self-care / stress
+        let alcoholUnits = Int(clamp(1 - selfCareScore + max(0, stressScore), min: 0, max: 3))
+        
+        // Stress level: 1 (low) ... 5 (high)
+        let stressLevel = Int(clamp(3 - stressScore * 2, min: 1, max: 5))
+        
+        let lateCaffeine = selfCareScore < -0.5
+        let screenLate = sleepScore < -0.5
+        let bedtimeHour = clamp(23 - sleepScore * 1.5, min: 20, max: 24)
+        
+        return DailyMetricsPayload(
+            date: date,
+            sleepHours: sleepHours,
+            steps: steps,
+            vigorousMinutes: vigorousMinutes,
+            processedFoodScore: processedFoodScore,
+            alcoholUnits: alcoholUnits,
+            stressLevel: stressLevel,
+            lateCaffeine: lateCaffeine,
+            screenLate: screenLate,
+            bedtimeHour: bedtimeHour
+        )
+    }
+    
+    private func clamp<T: Comparable>(_ value: T, min: T, max: T) -> T {
+        var v = value
+        if v < min { v = min }
+        if v > max { v = max }
+        return v
     }
 }

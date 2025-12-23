@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import FirebaseAuth
 
 final class APIClient {
     static let shared = APIClient()
@@ -21,108 +22,32 @@ final class APIClient {
         #endif
     }
     
-    func postOnboarding(_ request: OnboardingSubmitRequest) async throws -> OnboardingResultDTO {
-        let url = baseURL.appendingPathComponent("api").appendingPathComponent("onboarding").appendingPathComponent("submit")
-        
+    func postAuthMe(idToken: String) async throws -> AuthProfileResponse {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("me")
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONEncoder().encode(request)
-        
-        print("[APIClient] POST \(url.absoluteString)")
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(for: urlRequest)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                print("[APIClient] POST /api/onboarding/submit failed: Invalid response type")
-                throw APIError.invalidResponse(endpoint: "/api/onboarding/submit")
-            }
-            
-            guard httpResponse.statusCode == 200 else {
-                let responseBody = String(data: data, encoding: .utf8) ?? "(unable to decode)"
-                print("[APIClient] POST /api/onboarding/submit failed: \(httpResponse.statusCode)")
-                print("[APIClient] Response body: \(responseBody)")
-                throw APIError.httpError(endpoint: "/api/onboarding/submit", statusCode: httpResponse.statusCode, responseBody: responseBody)
-            }
-            
-            let decoder = JSONDecoder()
-            return try decoder.decode(OnboardingResultDTO.self, from: data)
-        } catch let error as APIError {
-            throw error
-        } catch {
-            print("[APIClient] POST /api/onboarding/submit failed: \(error.localizedDescription)")
-            throw APIError.networkError(endpoint: "/api/onboarding/submit", underlyingError: error)
-        }
+        urlRequest.httpBody = try JSONEncoder().encode(AuthMeRequest(idToken: idToken))
+        addAuthHeader(&urlRequest, token: idToken)
+        return try await perform(urlRequest, as: AuthProfileResponse.self, endpoint: "/api/auth/me")
+    }
+    
+    func postOnboarding(_ request: OnboardingSubmitRequest) async throws -> OnboardingResultDTO {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("onboarding").appendingPathComponent("submit")
+        let urlRequest = try await authorizedRequest(url: url, method: "POST", body: request)
+        return try await perform(urlRequest, as: OnboardingResultDTO.self, endpoint: "/api/onboarding/submit")
     }
     
     func postDaily(_ request: DailySubmitRequest) async throws -> DailyResultDTO {
-        let url = baseURL.appendingPathComponent("api").appendingPathComponent("daily").appendingPathComponent("submit")
-        
-        var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONEncoder().encode(request)
-        
-        print("[APIClient] POST \(url.absoluteString)")
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(for: urlRequest)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                print("[APIClient] POST /api/daily/submit failed: Invalid response type")
-                throw APIError.invalidResponse(endpoint: "/api/daily/submit")
-            }
-            
-            guard httpResponse.statusCode == 200 else {
-                let responseBody = String(data: data, encoding: .utf8) ?? "(unable to decode)"
-                print("[APIClient] POST /api/daily/submit failed: \(httpResponse.statusCode)")
-                print("[APIClient] Response body: \(responseBody)")
-                throw APIError.httpError(endpoint: "/api/daily/submit", statusCode: httpResponse.statusCode, responseBody: responseBody)
-            }
-            
-            let decoder = JSONDecoder()
-            return try decoder.decode(DailyResultDTO.self, from: data)
-        } catch let error as APIError {
-            throw error
-        } catch {
-            print("[APIClient] POST /api/daily/submit failed: \(error.localizedDescription)")
-            throw APIError.networkError(endpoint: "/api/daily/submit", underlyingError: error)
-        }
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("age").appendingPathComponent("daily-update")
+        let urlRequest = try await authorizedRequest(url: url, method: "POST", body: request)
+        return try await perform(urlRequest, as: DailyResultDTO.self, endpoint: "/api/age/daily-update")
     }
     
-    func getSummary(userId: String) async throws -> SummaryDTO {
-        var urlComponents = URLComponents(url: baseURL.appendingPathComponent("api").appendingPathComponent("stats").appendingPathComponent("summary"), resolvingAgainstBaseURL: false)!
-        urlComponents.queryItems = [URLQueryItem(name: "userId", value: userId)]
-        guard let url = urlComponents.url else {
-            throw APIError.invalidURL(endpoint: "/api/stats/summary")
-        }
-        
-        print("[APIClient] GET \(url.absoluteString)")
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                print("[APIClient] GET /api/stats/summary failed: Invalid response type")
-                throw APIError.invalidResponse(endpoint: "/api/stats/summary")
-            }
-            
-            guard httpResponse.statusCode == 200 else {
-                let responseBody = String(data: data, encoding: .utf8) ?? "(unable to decode)"
-                print("[APIClient] GET /api/stats/summary failed: \(httpResponse.statusCode)")
-                print("[APIClient] Response body: \(responseBody)")
-                throw APIError.httpError(endpoint: "/api/stats/summary", statusCode: httpResponse.statusCode, responseBody: responseBody)
-            }
-            
-            let decoder = JSONDecoder()
-            return try decoder.decode(SummaryDTO.self, from: data)
-        } catch let error as APIError {
-            throw error
-        } catch {
-            print("[APIClient] GET /api/stats/summary failed: \(error.localizedDescription)")
-            throw APIError.networkError(endpoint: "/api/stats/summary", underlyingError: error)
-        }
+    func getSummary() async throws -> StatsSummaryResponse {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("stats").appendingPathComponent("summary")
+        let urlRequest = try await authorizedRequest(url: url, method: "GET", body: Optional<Data>.none as Data?)
+        return try await perform(urlRequest, as: StatsSummaryResponse.self, endpoint: "/api/stats/summary")
     }
 }
 
@@ -132,6 +57,7 @@ enum APIError: LocalizedError {
     case invalidResponse(endpoint: String)
     case httpError(endpoint: String, statusCode: Int, responseBody: String)
     case networkError(endpoint: String, underlyingError: Error)
+    case missingAuthToken
     
     var errorDescription: String? {
         switch self {
@@ -143,6 +69,75 @@ enum APIError: LocalizedError {
             return "\(endpoint) returned status code \(statusCode)"
         case .networkError(let endpoint, let error):
             return "Network error for \(endpoint): \(error.localizedDescription)"
+        case .missingAuthToken:
+            return "Authorization token is missing. Please sign in again."
         }
     }
 }
+
+// MARK: - Private helpers
+private extension APIClient {
+    func authorizedRequest<T: Encodable>(url: URL, method: String, body: T?) async throws -> URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let body = body {
+            request.httpBody = try JSONEncoder().encode(body)
+        }
+        let token = try await AuthManager.shared.getIDToken()
+        addAuthHeader(&request, token: token)
+        return request
+    }
+    
+    func authorizedRequest(url: URL, method: String, body: Data?) async throws -> URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        let token = try await AuthManager.shared.getIDToken()
+        addAuthHeader(&request, token: token)
+        return request
+    }
+    
+    func addAuthHeader(_ request: inout URLRequest, token: String) {
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+    
+    func perform<T: Decodable>(_ request: URLRequest, as type: T.Type, endpoint: String) async throws -> T {
+        print("[APIClient] \(request.httpMethod ?? "") \(request.url?.absoluteString ?? "")")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+                print("[APIClient] \(endpoint) failed: Invalid response type")
+                throw APIError.invalidResponse(endpoint: endpoint)
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+                let responseBody = String(data: data, encoding: .utf8) ?? "(unable to decode)"
+                print("[APIClient] \(endpoint) failed: \(httpResponse.statusCode)")
+                print("[APIClient] Response body: \(responseBody)")
+                throw APIError.httpError(endpoint: endpoint, statusCode: httpResponse.statusCode, responseBody: responseBody)
+            }
+            
+            let decoder = JSONDecoder()
+            return try decoder.decode(T.self, from: data)
+        } catch let error as APIError {
+            throw error
+        } catch {
+            print("[APIClient] \(endpoint) failed: \(error.localizedDescription)")
+            throw APIError.networkError(endpoint: endpoint, underlyingError: error)
+        }
+    }
+}
+
+// MARK: - DTOs
+struct AuthMeRequest: Codable {
+    let idToken: String
+}
+
+struct AuthProfileResponse: Codable {
+    let uid: String
+    let email: String?
+    let profile: [String: String]?
+}
+

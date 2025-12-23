@@ -25,16 +25,6 @@ final class LongevityAPI {
     
     func submitDailyUpdate(_ requestBody: DailyUpdateRequest,
                           completion: @escaping (Result<AgeStateResponse, Error>) -> Void) {
-        // Get userId from Firebase Auth
-        guard let userId = AuthManager.shared.userId else {
-            print("Missing userId, cannot send daily update")
-            let error = NSError(domain: "LongevityAPI",
-                               code: -3,
-                               userInfo: [NSLocalizedDescriptionKey: "User ID is missing. Please sign in."])
-            completion(.failure(error))
-            return
-        }
-        
         let url = baseURL.appendingPathComponent("api").appendingPathComponent("age").appendingPathComponent("daily-update")
         
         // Debug: Print request URL
@@ -44,15 +34,8 @@ final class LongevityAPI {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        // Build payload with authenticated userId
-        let payload = DailyUpdateRequest(
-            userId: userId,
-            chronologicalAgeYears: requestBody.chronologicalAgeYears,
-            metrics: requestBody.metrics
-        )
-        
         do {
-            request.httpBody = try JSONEncoder().encode(payload)
+            request.httpBody = try JSONEncoder().encode(requestBody)
             
             // Debug: Print request JSON body
             if let jsonString = String(data: request.httpBody ?? Data(), encoding: .utf8) {
@@ -66,7 +49,7 @@ final class LongevityAPI {
             return
         }
         
-        print("Sent daily update for user \(userId)")
+        print("[LongevityAPI] Sent daily update request")
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
@@ -146,17 +129,12 @@ final class LongevityAPI {
     }
     
     func sendChatMessage(message: String, completion: @escaping (Result<String, Error>) -> Void) {
-        guard let userId = AuthManager.shared.userId else {
-            completion(.failure(NSError(domain: "LongevityAPI", code: -3, userInfo: [NSLocalizedDescriptionKey: "User ID missing"])))
-            return
-        }
-        
         let url = baseURL.appendingPathComponent("api").appendingPathComponent("chat")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let payload = ChatRequest(userId: userId, message: message)
+        let payload = ChatRequest(message: message)
         
         do {
             request.httpBody = try JSONEncoder().encode(payload)

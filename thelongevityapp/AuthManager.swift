@@ -8,28 +8,43 @@
 import Foundation
 import FirebaseAuth
 
+/// Centralized Firebase Auth wrapper. Handles email/password sign-up & sign-in,
+/// exposes current uid, and provides fresh ID tokens for APIClient.
+@MainActor
 final class AuthManager: ObservableObject {
-    @Published var userId: String? = "gizem-demo"
+    @Published private(set) var currentUser: User?
     
     static let shared = AuthManager()
     
     private init() {
-        if let currentUid = Auth.auth().currentUser?.uid {
-            self.userId = currentUid
-        } else {
-            self.userId = "gizem-demo"
-            signInAnonymously()
-        }
+        currentUser = Auth.auth().currentUser
     }
     
-    private func signInAnonymously() {
-        Auth.auth().signInAnonymously { [weak self] result, error in
-            if let error = error {
-                print("Anonymous sign-in failed:", error)
-                return
-            }
-            self?.userId = result?.user.uid
+    var uid: String? {
+        currentUser?.uid
+    }
+    
+    func signUp(email: String, password: String) async throws {
+        let result = try await Auth.auth().createUser(withEmail: email, password: password)
+        currentUser = result.user
+    }
+    
+    func signIn(email: String, password: String) async throws {
+        let result = try await Auth.auth().signIn(withEmail: email, password: password)
+        currentUser = result.user
+    }
+    
+    func signOut() throws {
+        try Auth.auth().signOut()
+        currentUser = nil
+    }
+    
+    /// Returns a fresh ID token for protected API calls (always force-refresh).
+    func getIDToken() async throws -> String {
+        guard let user = Auth.auth().currentUser else {
+            throw APIError.missingAuthToken
         }
+        return try await user.getIDTokenResult(forcingRefresh: true).token
     }
 }
 

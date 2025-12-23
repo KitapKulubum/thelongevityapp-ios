@@ -15,7 +15,7 @@ struct OnboardingFlowView: View {
     init() {
         // Create temporary appState for viewModel initialization
         // Will be updated in onAppear to use environment object
-        let userId = AuthManager.shared.userId ?? "gizem-demo"
+        let userId = AuthManager.shared.uid ?? ""
         let tempState = AppState(userId: userId)
         _viewModel = StateObject(wrappedValue: ChatViewModel(appState: tempState))
     }
@@ -102,10 +102,11 @@ struct OnboardingFlowView: View {
                     }
                     
                     onboardingQuestionOptions
-                    dailyCheckInQuestionOptions
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
+                // Add extra bottom space when input is disabled to avoid overlap
+                .padding(.bottom, viewModel.chatInputEnabled ? 0 : 80)
             }
                     .disabled(viewModel.isChatDisabled)
                     .onChange(of: viewModel.messages.count) {
@@ -198,27 +199,5 @@ struct OnboardingFlowView: View {
         }
     }
     
-    @ViewBuilder
-    private var dailyCheckInQuestionOptions: some View {
-        if viewModel.mode == .daily,
-           case .active(let expanded) = viewModel.dailyCheckInState,
-           expanded,
-           let question = viewModel.currentDailyQuestion,
-           !viewModel.isSubmitting {
-            VStack(spacing: 12) {
-                ForEach(question.options) { option in
-                    OptionButton(
-                        title: option.title,
-                        isSelected: false,
-                        action: {
-                            viewModel.selectDailyOption(option)
-                        }
-                    )
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-        }
-    }
 }
 

@@ -22,16 +22,109 @@ class AppState: ObservableObject {
     @Published var summary: StatsSummaryResponse?
     @Published var activeTab: Tab = .chat
     
+    // User profile info
+    @Published var userFirstName: String?
+    @Published var userLastName: String?
+    @Published var userChronologicalAge: Double?
+    @Published var userTimezone: String?  // IANA timezone identifier
+    
     private let userDefaults = UserDefaults.standard
     private let hasCompletedOnboardingKey = "hasCompletedOnboarding"
     private let lastDailyDateSubmittedKey = "lastDailyDateSubmitted"
     private let cachedSummaryKey = "cachedSummary"
+    private let userFirstNameKey = "userFirstName"
+    private let userLastNameKey = "userLastName"
+    private let userChronologicalAgeKey = "userChronologicalAge"
+    private let userTimezoneKey = "userTimezone"
     
     init(userId: String) {
         self.userId = userId
+        // Load user profile from UserDefaults
+        self.userFirstName = userDefaults.string(forKey: userFirstNameKey)
+        self.userLastName = userDefaults.string(forKey: userLastNameKey)
+        if userDefaults.object(forKey: userChronologicalAgeKey) != nil {
+            self.userChronologicalAge = userDefaults.double(forKey: userChronologicalAgeKey)
+        }
+        self.userTimezone = userDefaults.string(forKey: userTimezoneKey)
     }
     
-    func bootstrap() async {
+    func updateUserProfile(firstName: String?, lastName: String?, chronologicalAge: Double?, timezone: String? = nil) {
+        userFirstName = firstName
+        userLastName = lastName
+        userChronologicalAge = chronologicalAge
+        if let timezone = timezone {
+            userTimezone = timezone
+        }
+        
+        if let firstName = firstName {
+            userDefaults.set(firstName, forKey: userFirstNameKey)
+        } else {
+            userDefaults.removeObject(forKey: userFirstNameKey)
+        }
+        
+        if let lastName = lastName {
+            userDefaults.set(lastName, forKey: userLastNameKey)
+        } else {
+            userDefaults.removeObject(forKey: userLastNameKey)
+        }
+        
+        if let age = chronologicalAge {
+            userDefaults.set(age, forKey: userChronologicalAgeKey)
+        } else {
+            userDefaults.removeObject(forKey: userChronologicalAgeKey)
+        }
+        
+        if let timezone = timezone {
+            userDefaults.set(timezone, forKey: userTimezoneKey)
+        }
+    }
+    
+    /// Detects current device timezone and updates backend if different
+    /// This function never throws - timezone sync failures should not block login or app usage
+    func syncTimezoneIfNeeded() async {
+        let deviceTimezone = TimeZone.current.identifier
+        
+        // If timezone hasn't changed, no need to update
+        if let storedTimezone = userTimezone, storedTimezone == deviceTimezone {
+            return
+        }
+        
+        // Update backend - but don't block if it fails (timeout, network error, etc.)
+        do {
+            _ = try await APIClient.shared.patchProfile(timezone: deviceTimezone)
+            await MainActor.run {
+                updateUserProfile(
+                    firstName: userFirstName,
+                    lastName: userLastName,
+                    chronologicalAge: userChronologicalAge,
+                    timezone: deviceTimezone
+                )
+                print("[AppState] Timezone updated to: \(deviceTimezone)")
+            }
+        } catch let error as APIError {
+            // Check if it's a network/timeout error - these are non-critical
+            if case .networkError = error {
+                print("[AppState] Timezone update failed (network/timeout): \(error.localizedDescription). Continuing without timezone update.")
+                // Store timezone locally anyway so we don't retry immediately
+                await MainActor.run {
+                    updateUserProfile(
+                        firstName: userFirstName,
+                        lastName: userLastName,
+                        chronologicalAge: userChronologicalAge,
+                        timezone: deviceTimezone
+                    )
+                }
+            } else {
+                print("[AppState] Failed to update timezone: \(error). Continuing without timezone update.")
+            }
+            // Never throw - timezone update failure shouldn't block app usage
+        } catch {
+            print("[AppState] Failed to update timezone: \(error). Continuing without timezone update.")
+            // Never throw - timezone update failure shouldn't block app usage
+        }
+    }
+    
+    func bootstrap(requireBackend: Bool = false) async throws {
         // Load flags from UserDefaults
         hasCompletedOnboarding = userDefaults.bool(forKey: hasCompletedOnboardingKey)
         lastDailyDateSubmitted = userDefaults.string(forKey: lastDailyDateSubmittedKey)
@@ -40,7 +133,20 @@ class AppState: ObservableObject {
         if let summaryData = userDefaults.data(forKey: cachedSummaryKey),
            let decoded = try? JSONDecoder().decode(StatsSummaryResponse.self, from: summaryData) {
             summary = decoded
+            
+            // Update chronological age from cached summary if not already set from profile
+            if userChronologicalAge == nil || userChronologicalAge == 0 {
+                updateUserProfile(
+                    firstName: userFirstName,
+                    lastName: userLastName,
+                    chronologicalAge: decoded.state.chronologicalAgeYears
+                )
+            }
         }
+        
+        // Sync timezone with backend if needed (before fetching summary)
+        // This never throws - timeout/network errors are handled gracefully
+        await syncTimezoneIfNeeded()
         
         // Fetch fresh summary from backend (requires auth token)
         do {
@@ -48,9 +154,39 @@ class AppState: ObservableObject {
             userId = freshSummary.userId
             summary = freshSummary
             saveCachedSummary(freshSummary)
+            
+            // Update chronological age from summary if not already set from profile
+            if userChronologicalAge == nil || userChronologicalAge == 0 {
+                updateUserProfile(
+                    firstName: userFirstName,
+                    lastName: userLastName,
+                    chronologicalAge: freshSummary.state.chronologicalAgeYears
+                )
+            }
+        } catch let error as APIError {
+            print("[AppState] Failed to fetch summary: \(error)")
+            
+            // If it's a network/timeout error and backend is not required, use cached data
+            if case .networkError = error {
+                if !requireBackend {
+                    print("[AppState] Network error during bootstrap, using cached data")
+                    // Keep existing cached summary if available
+                    return
+                }
+            }
+            
+            // If backend is required (e.g., during login), throw the error
+            if requireBackend {
+                throw error
+            }
+            // Otherwise, keep cached summary if fetch fails (e.g., app restart)
         } catch {
             print("[AppState] Failed to fetch summary: \(error)")
-            // Keep cached summary if fetch fails (e.g., not signed in yet)
+            // If backend is required (e.g., during login), throw the error
+            if requireBackend {
+                throw error
+            }
+            // Otherwise, keep cached summary if fetch fails (e.g., app restart)
         }
         
         // Set default tab based on onboarding status
@@ -59,9 +195,14 @@ class AppState: ObservableObject {
         }
     }
     
+    func setOnboardingStatus(_ completed: Bool) {
+        hasCompletedOnboarding = completed
+        userDefaults.set(completed, forKey: hasCompletedOnboardingKey)
+        print("[AppState] Onboarding status set to: \(completed)")
+    }
+    
     func markOnboardingComplete() {
-        hasCompletedOnboarding = true
-        userDefaults.set(true, forKey: hasCompletedOnboardingKey)
+        setOnboardingStatus(true)
     }
     
     func updateLastDailyDate(_ date: String) {
@@ -72,6 +213,9 @@ class AppState: ObservableObject {
     func updateSummary(_ newSummary: StatsSummaryResponse) {
         summary = newSummary
         saveCachedSummary(newSummary)
+        userId = newSummary.userId
+        print("[AppState] Summary updated - userId: \(newSummary.userId), biologicalAge: \(newSummary.state.currentBiologicalAgeYears ?? newSummary.state.chronologicalAgeYears), agingDebt: \(newSummary.state.agingDebtYears), todayScore: \(newSummary.today?.score ?? 0)")
+        print("[AppState] Summary has \(newSummary.weeklyHistory.count) weekly, \(newSummary.monthlyHistory.count) monthly, \(newSummary.yearlyHistory.count) yearly history points")
     }
     
     private func saveCachedSummary(_ summary: StatsSummaryResponse) {
@@ -80,10 +224,11 @@ class AppState: ObservableObject {
         }
     }
     
+    /// Checks if daily check-in is already completed today based on backend data
+    /// Backend is the source of truth - uses summary.today field
     var isTodaySubmitted: Bool {
-        guard let lastDate = lastDailyDateSubmitted else { return false }
-        let today = DateFormatter.yyyyMMdd.string(from: Date())
-        return lastDate == today
+        // Backend is source of truth - if summary.today exists, check-in is completed
+        return summary?.today != nil
     }
 }
 

@@ -8,6 +8,7 @@
 import SwiftUI
 import UIKit
 import FirebaseCore
+import FirebaseAuth
 
 // Stub AppDelegate to satisfy Firebase AppDelegate swizzler warnings in SwiftUI apps.
 final class AppDelegate: NSObject, UIApplicationDelegate {}
@@ -33,6 +34,7 @@ struct RootView: View {
     @StateObject private var appState: AppState
     @State private var isBootstrapComplete = false
     @State private var authError: String?
+    @State private var authErrorTitle: String = "Login Failed"
     @State private var isAuthenticating = false
     
     init() {
@@ -45,9 +47,9 @@ struct RootView: View {
         
         return Group {
             if !isSignedIn {
-                AuthLandingView { mode, email, password in
+                AuthLandingView { mode, email, password, firstName, lastName, dateOfBirth in
                     Task {
-                        await handleAuth(mode: mode, email: email, password: password)
+                        await handleAuth(mode: mode, email: email, password: password, firstName: firstName, lastName: lastName, dateOfBirth: dateOfBirth)
                     }
                 }
                 .overlay(
@@ -64,12 +66,15 @@ struct RootView: View {
                         }
                     }
                 )
-                .alert("Login failed", isPresented: .constant(authError != nil)) {
-                    Button("OK") { authError = nil }
+                .alert(authErrorTitle, isPresented: .constant(authError != nil)) {
+                    Button("OK") { 
+                        authError = nil
+                        authErrorTitle = "Login Failed"
+                    }
                 } message: {
-                    Text(authError ?? "Unknown error")
+                    Text(authError ?? "An unknown error occurred")
                 }
-            } else if !isBootstrapComplete {
+                } else if !isBootstrapComplete {
                 ZStack {
                     Color.black.ignoresSafeArea()
                     ProgressView()
@@ -77,50 +82,517 @@ struct RootView: View {
                 }
                 .onAppear {
                     Task {
-                        await appState.bootstrap()
-                        isBootstrapComplete = true
+                        do {
+                            try await appState.bootstrap(requireBackend: true)
+                            await MainActor.run {
+                                isBootstrapComplete = true
+                            }
+                        } catch {
+                            print("[RootView] Bootstrap failed: \(error)")
+                            // Check if it's an onboarding required error - this is normal for new users
+                            if isOnboardingRequiredError(error) {
+                                print("[RootView] User needs to complete onboarding (app startup)")
+                                await MainActor.run {
+                                    // Set onboarding flag to false FIRST, then complete bootstrap
+                                    // This ensures view renders onboarding screen immediately
+                                    appState.hasCompletedOnboarding = false
+                                    // Complete bootstrap in the same update cycle
+                                    isBootstrapComplete = true
+                                }
+                                return
+                            }
+                            
+                            // Check if it's an invalid response error (decoding) - this can happen for new users
+                            // But only redirect to onboarding if user hasn't completed it before
+                            if isInvalidResponseError(error) {
+                                // Check if user has completed onboarding before from UserDefaults
+                                // (This was set from postAuthMe response during login)
+                                let hasCompletedBefore = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+                                if !hasCompletedBefore {
+                                    print("[RootView] Invalid response error during app startup, allowing onboarding (new user)")
+                                    await MainActor.run {
+                                        // Set onboarding flag to false FIRST, then complete bootstrap
+                                        // This ensures view renders onboarding screen immediately
+                                        appState.setOnboardingStatus(false)
+                                        // Complete bootstrap in the same update cycle
+                                        isBootstrapComplete = true
+                                    }
+                                    return
+                                } else {
+                                    // User has completed onboarding before, but decoding failed
+                                    // Try to continue with cached data or show error
+                                    print("[RootView] Invalid response error during app startup, but user has completed onboarding - continuing with cached data")
+                                    await MainActor.run {
+                                        // Keep existing onboarding status from UserDefaults
+                                        appState.setOnboardingStatus(true)
+                                        // Complete bootstrap in the same update cycle
+                                        isBootstrapComplete = true
+                                    }
+                                    return
+                                }
+                            }
+                            
+                            // If backend connection fails, sign out and show login screen
+                            await MainActor.run {
+                                // Sign out first to update auth state
+                                do {
+                                    try authManager.signOut()
+                                } catch {
+                                    print("[RootView] Failed to sign out after bootstrap error: \(error)")
+                                }
+                                // Set error message to show on login screen
+                                authError = getErrorMessage(for: error)
+                                // Reset bootstrap state
+                                isBootstrapComplete = false
+                            }
+                        }
                     }
                 }
-            } else if !appState.hasCompletedOnboarding {
-                OnboardingFlowView()
-                    .environmentObject(appState)
             } else {
+                // Always show MainTabView - onboarding will be handled within AI screen
                 MainTabView()
                     .environmentObject(appState)
             }
         }
         .preferredColorScheme(.dark)
+        .onChange(of: authManager.currentUser) { oldValue, newValue in
+            // When user logs out (currentUser becomes nil), reset bootstrap state
+            if newValue == nil && oldValue != nil {
+                print("[RootView] User logged out, resetting state")
+                isBootstrapComplete = false
+                authError = nil
+                isAuthenticating = false
+            }
+        }
     }
     
-    private func handleAuth(mode: AuthMode, email: String, password: String) async {
+    private func handleAuth(mode: AuthMode, email: String, password: String, firstName: String? = nil, lastName: String? = nil, dateOfBirth: Date? = nil) async {
         await MainActor.run {
             isAuthenticating = true
             authError = nil
         }
+        
+        var firebaseAuthSucceeded = false
+        
         do {
+            // Step 1: Firebase Authentication
             if mode == .signup {
                 try await authManager.signUp(email: email, password: password)
             } else {
                 try await authManager.signIn(email: email, password: password)
             }
-            let token = try await authManager.getIDToken()
-            let profile = try await APIClient.shared.postAuthMe(idToken: token)
+            firebaseAuthSucceeded = true
             
-            await MainActor.run {
-                appState.userId = profile.uid
+            // Step 2: Get ID Token
+            let token = try await authManager.getIDToken()
+            
+            // Step 3: Verify with backend API (optional - if it fails, use Firebase uid)
+            var backendUserId: String? = nil
+            var userProfile: AuthProfileResponse.ProfileInfo? = nil
+            var hasCompletedOnboarding: Bool? = nil
+            do {
+                let profile = try await APIClient.shared.postAuthMe(
+                    idToken: token,
+                    firstName: mode == .signup ? firstName : nil,
+                    lastName: mode == .signup ? lastName : nil,
+                    dateOfBirth: mode == .signup ? dateOfBirth : nil
+                )
+                backendUserId = profile.uid
+                userProfile = profile.profile
+                hasCompletedOnboarding = profile.hasCompletedOnboarding
+                print("[RootView] postAuthMe success - hasCompletedOnboarding: \(profile.hasCompletedOnboarding)")
+            } catch {
+                // If postAuthMe fails (decoding error, etc.), use Firebase uid instead
+                print("[RootView] postAuthMe failed, using Firebase uid: \(error)")
+                // Continue with Firebase uid - this is OK for new users
             }
             
-            await appState.bootstrap()
+            // Step 4: Update app state
+            await MainActor.run {
+                // Use backend uid if available, otherwise use Firebase uid
+                if let backendUid = backendUserId {
+                    appState.userId = backendUid
+                } else if let firebaseUid = authManager.uid {
+                    appState.userId = firebaseUid
+                }
+                
+                // Store user profile info in AppState if available
+                if let profile = userProfile {
+                    appState.updateUserProfile(
+                        firstName: profile.firstName,
+                        lastName: profile.lastName,
+                        chronologicalAge: profile.chronologicalAgeYears,
+                        timezone: profile.timezone
+                    )
+                }
+                
+                // Set onboarding status from backend response
+                // For new signups, backend should return false, but we set it explicitly to be safe
+                if let onboardingStatus = hasCompletedOnboarding {
+                    appState.setOnboardingStatus(onboardingStatus)
+                    print("[RootView] Set onboarding status from backend: \(onboardingStatus)")
+                } else if mode == .signup {
+                    // For new signups, explicitly set onboarding to false if backend didn't respond
+                    appState.setOnboardingStatus(false)
+                    print("[RootView] New signup - setting hasCompletedOnboarding to false")
+                }
+            }
+            
+            // Step 5: Bootstrap app state (require backend during login)
+            // But allow 404 "Complete onboarding first" and missingAuthToken to pass through
+            do {
+                try await appState.bootstrap(requireBackend: true)
+                
+                // Bootstrap successful - onboarding status already set from postAuthMe response
+                // No need to override it here
+            } catch {
+                print("[RootView] Bootstrap error during login: \(error)")
+                // Check if it's a 404 "Complete onboarding first" - this is normal for new users
+                if isOnboardingRequiredError(error) {
+                    // This is normal - user needs to complete onboarding
+                    // Use onboarding status from postAuthMe if available, otherwise set to false
+                    print("[RootView] User needs to complete onboarding (login)")
+                    await MainActor.run {
+                        // Set onboarding flag to false FIRST, then complete bootstrap
+                        // This ensures view renders onboarding screen immediately
+                        if let onboardingStatus = hasCompletedOnboarding {
+                            appState.setOnboardingStatus(onboardingStatus)
+                        } else {
+                            appState.setOnboardingStatus(false)
+                        }
+                        // Complete bootstrap in the same update cycle
+                        isBootstrapComplete = true
+                    }
+                    return
+                } else if isMissingAuthTokenError(error) {
+                    // Missing auth token - this can happen for new users, allow onboarding
+                    // Use onboarding status from postAuthMe if available, otherwise set to false
+                    print("[RootView] Missing auth token, allowing onboarding (login)")
+                    await MainActor.run {
+                        // Set onboarding flag to false FIRST, then complete bootstrap
+                        // This ensures view renders onboarding screen immediately
+                        if let onboardingStatus = hasCompletedOnboarding {
+                            appState.setOnboardingStatus(onboardingStatus)
+                        } else {
+                            appState.setOnboardingStatus(false)
+                        }
+                        // Complete bootstrap in the same update cycle
+                        isBootstrapComplete = true
+                    }
+                    return
+                } else if isInvalidResponseError(error) {
+                    // Decoding/invalid response error - this happens when backend returns incomplete data
+                    // Use onboarding status from postAuthMe response if available, otherwise check cached data
+                    if let onboardingStatus = hasCompletedOnboarding {
+                        // We already have onboarding status from postAuthMe
+                        print("[RootView] Invalid response error during login, but onboarding status from postAuthMe: \(onboardingStatus)")
+                        await MainActor.run {
+                            // Keep onboarding status from postAuthMe
+                            appState.setOnboardingStatus(onboardingStatus)
+                            // Complete bootstrap in the same update cycle
+                            isBootstrapComplete = true
+                        }
+                        return
+                    } else {
+                        // postAuthMe failed, check cached summary
+                        let hasCompletedBefore = appState.summary?.state.baselineBiologicalAgeYears != nil
+                        if !hasCompletedBefore {
+                            // New user or user hasn't completed onboarding
+                            print("[RootView] Invalid response error during login, allowing onboarding (new user or incomplete onboarding)")
+                            await MainActor.run {
+                                // Set onboarding flag to false FIRST, then complete bootstrap
+                                // This ensures view renders onboarding screen immediately
+                                appState.setOnboardingStatus(false)
+                                // Complete bootstrap in the same update cycle
+                                isBootstrapComplete = true
+                            }
+                            return
+                        } else {
+                            // User has completed onboarding before, but decoding failed
+                            // Continue with cached data
+                            print("[RootView] Invalid response error during login, but user has completed onboarding - continuing with cached data")
+                            await MainActor.run {
+                                // Keep existing onboarding status from cached summary
+                                appState.setOnboardingStatus(true)
+                                // Complete bootstrap in the same update cycle
+                                isBootstrapComplete = true
+                            }
+                            return
+                        }
+                    }
+                } else {
+                    // For other errors during login, throw to be handled by outer catch
+                    throw error
+                }
+            }
+            
+            // Bootstrap succeeded and it's not a new signup
             await MainActor.run {
                 isBootstrapComplete = true
             }
         } catch {
-            await MainActor.run {
-                authError = error.localizedDescription
+            // If Firebase auth succeeded but backend failed, check error type
+            if firebaseAuthSucceeded {
+                // First check if it's an onboarding required error (404 with onboarding message)
+                if isOnboardingRequiredError(error) {
+                    // This is normal - user needs to complete onboarding
+                    print("[RootView] User needs to complete onboarding")
+                    await MainActor.run {
+                        isBootstrapComplete = true
+                        isAuthenticating = false
+                    }
+                    return
+                }
+                
+                // Check if it's a missing auth token error
+                if isMissingAuthTokenError(error) {
+                    // Missing auth token - this can happen for new users, allow onboarding
+                    print("[RootView] Missing auth token, allowing onboarding")
+                    await MainActor.run {
+                        isBootstrapComplete = true
+                        isAuthenticating = false
+                    }
+                    return
+                }
+                
+                // Check if it's an authentication error (401, 403) - these should logout
+                let isAuthError = isAuthenticationError(error)
+                
+                if isAuthError {
+                    // Authentication failed (invalid credentials, unauthorized, etc.), sign out
+                    print("[RootView] Authentication failed, signing out")
+                    do {
+                        try authManager.signOut()
+                    } catch {
+                        print("[RootView] Failed to sign out after auth error: \(error)")
+                    }
+                    await MainActor.run {
+                        authError = getErrorMessage(for: error)
+                        isAuthenticating = false
+                    }
+                } else {
+                    // Check if it's a network/backend connection error
+                    let isBackendError = isBackendConnectionError(error)
+                    
+                    if isBackendError {
+                        // Backend is down, allow offline mode with cached data
+                        print("[RootView] Backend unavailable, allowing offline mode")
+                        let errorMessage = getErrorMessage(for: error)
+                        await MainActor.run {
+                            // Use Firebase user ID if available
+                            if let firebaseUserId = authManager.uid {
+                                appState.userId = firebaseUserId
+                            }
+                            // Show error alert to user
+                            authErrorTitle = "Connection Error"
+                            authError = "\(errorMessage)\n\nYou can continue in offline mode, but some features may be limited."
+                            // Try to bootstrap with cached data (offline mode)
+                            Task {
+                                do {
+                                    try await appState.bootstrap(requireBackend: false)
+                                    await MainActor.run {
+                                        isBootstrapComplete = true
+                                        isAuthenticating = false
+                                    }
+                                } catch {
+                                    // Even cached data failed, show error but don't logout
+                                    await MainActor.run {
+                                        isBootstrapComplete = true // Allow user to continue anyway
+                                        isAuthenticating = false
+                                    }
+                                }
+                            }
+                        }
+                        // Don't set isAuthenticating = false here, wait for Task to complete
+                        return
+                    } else {
+                        // Other errors, sign out
+                        do {
+                            try authManager.signOut()
+                        } catch {
+                            print("[RootView] Failed to sign out after error: \(error)")
+                        }
+                        await MainActor.run {
+                            authError = getErrorMessage(for: error)
+                            isAuthenticating = false
+                        }
+                    }
+                }
+            } else {
+                // Firebase auth failed, show error
+                await MainActor.run {
+                    authError = getErrorMessage(for: error)
+                    isAuthenticating = false
+                }
             }
         }
+        
         await MainActor.run {
             isAuthenticating = false
         }
+    }
+    
+    private func getErrorMessage(for error: Error) -> String {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .networkError(_, let underlyingError):
+                if let urlError = underlyingError as? URLError {
+                    switch urlError.code {
+                    case .notConnectedToInternet, .networkConnectionLost:
+                        return "Please check your internet connection. Unable to reach the server."
+                    case .timedOut:
+                        return "Connection timed out. Please try again."
+                    default:
+                        return "Network error: \(underlyingError.localizedDescription)"
+                    }
+                } else if let nsError = underlyingError as NSError? {
+                    // Check for timeout error code (-1001)
+                    if nsError.code == NSURLErrorTimedOut {
+                        return "Connection timed out. Please try again."
+                    } else if nsError.code == NSURLErrorNotConnectedToInternet || nsError.code == NSURLErrorNetworkConnectionLost {
+                        return "Please check your internet connection. Unable to reach the server."
+                    } else if nsError.code == NSURLErrorCannotConnectToHost {
+                        return "Unable to connect to server. Please check if the server is running."
+                    }
+                }
+                return "Unable to connect to server. Please try again later."
+            case .httpError(_, let statusCode, _):
+                if statusCode == 401 {
+                    return "Invalid login credentials. Please check your email and password."
+                } else if statusCode >= 500 {
+                    return "Server error (\(statusCode)). Please try again later."
+                } else {
+                    return "Server error (\(statusCode)). Please try again."
+                }
+            case .missingAuthToken:
+                return "Session information not found. Please sign in again."
+            default:
+                return apiError.localizedDescription
+            }
+        } else if let authError = error as NSError?,
+                  let errorCode = AuthErrorCode(_bridgedNSError: authError) {
+            // Firebase Auth errors
+            switch errorCode.code {
+            case .invalidEmail:
+                return "Invalid email address. Please enter a valid email."
+            case .userNotFound:
+                return "No user found with this email address."
+            case .wrongPassword:
+                return "Incorrect password. Please check your password."
+            case .emailAlreadyInUse:
+                return "This email address is already in use. Please try signing in."
+            case .weakPassword:
+                return "Password is too weak. Please choose a stronger password."
+            case .networkError:
+                return "Please check your internet connection."
+            default:
+                return "Authentication error: \(error.localizedDescription)"
+            }
+        }
+        
+        return "An unexpected error occurred: \(error.localizedDescription)"
+    }
+    
+    private func isAuthenticationError(_ error: Error) -> Bool {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .httpError(_, let statusCode, _):
+                // Authentication errors: 401 (Unauthorized), 403 (Forbidden)
+                return statusCode == 401 || statusCode == 403
+            default:
+                return false
+            }
+        }
+        return false
+    }
+    
+    private func isOnboardingRequiredError(_ error: Error) -> Bool {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .httpError(_, let statusCode, let responseBody):
+                // 404 with "Complete onboarding first" or "User not found" message means user needs onboarding
+                if statusCode == 404 {
+                    let lowercased = responseBody.lowercased()
+                    print("[RootView] Checking onboarding error - statusCode: \(statusCode), responseBody: \(responseBody)")
+                    if lowercased.contains("complete onboarding") || 
+                       lowercased.contains("user not found") ||
+                       lowercased.contains("onboarding first") {
+                        print("[RootView] Onboarding required error detected")
+                        return true
+                    }
+                }
+                return false
+            default:
+                return false
+            }
+        }
+        return false
+    }
+    
+    private func isMissingAuthTokenError(_ error: Error) -> Bool {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .missingAuthToken:
+                return true
+            default:
+                return false
+            }
+        }
+        return false
+    }
+    
+    private func isInvalidResponseError(_ error: Error) -> Bool {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .invalidResponse:
+                return true
+            default:
+                return false
+            }
+        }
+        // Also check for DecodingError
+        if error is DecodingError {
+            return true
+        }
+        return false
+    }
+    
+    private func isBackendConnectionError(_ error: Error) -> Bool {
+        // Decoding errors are NOT connection errors - they indicate backend data format issues
+        if error is DecodingError {
+            return false
+        }
+        
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .networkError(_, let underlyingError):
+                // Check if underlying error is a real network error (not decoding)
+                if underlyingError is DecodingError {
+                    return false
+                }
+                return true
+            case .httpError(_, let statusCode, _):
+                // Server errors (5xx) or connection refused (could be 502, 503, etc.)
+                return statusCode >= 500
+            case .invalidResponse:
+                // Invalid response (including decoding errors) is not a connection error
+                return false
+            default:
+                return false
+            }
+        }
+        // Check for network-related NSError codes
+        if let nsError = error as NSError? {
+            let networkErrorCodes: [Int] = [
+                NSURLErrorTimedOut,           // -1001
+                NSURLErrorCannotConnectToHost, // -1004
+                NSURLErrorNetworkConnectionLost, // -1005
+                NSURLErrorNotConnectedToInternet, // -1009
+                NSURLErrorCannotFindHost,      // -1003
+                NSURLErrorDNSLookupFailed      // -1006
+            ]
+            return networkErrorCodes.contains(nsError.code)
+        }
+        return false
     }
 }

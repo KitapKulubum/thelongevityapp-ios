@@ -16,43 +16,133 @@ struct MainTabView: View {
     }
     
     var body: some View {
-        TabView(selection: $appState.activeTab) {
-            AICoachView()
-                .tabItem {
-                    Image(systemName: "sparkles")
-                    Text("AI")
-                }
-                .tag(Tab.chat)
-
-            LongevityTrendView()
-                .tabItem {
-                    Image(systemName: "chart.bar.fill")
-                    Text("Score")
-                }
-                .tag(Tab.score)
-
-            ProfileView()
-                .tabItem {
-                    Image(systemName: "person.crop.circle")
-                    Text("Profile")
-                }
-                .tag(Tab.profile)
-        }
-        .environmentObject(scoreViewModel)
-        .environmentObject(appState)
-        .preferredColorScheme(.dark)
-        .onAppear {
-            // Bootstrap app state
-            Task {
-                await appState.bootstrap()
+        let isOnboarding = !appState.hasCompletedOnboarding
+        
+        let aiTab = AICoachView()
+            .tabItem {
+                Image(systemName: "sparkles")
+                Text("AI")
             }
+            .tag(Tab.chat)
+        
+        let scoreTab = LongevityTrendView()
+            .tabItem {
+                Image(systemName: "chart.bar.fill")
+                Text("Score")
+            }
+            .tag(Tab.score)
+        
+        let profileTab = ProfileView()
+            .tabItem {
+                Image(systemName: "person.crop.circle")
+                Text("Profile")
+            }
+            .tag(Tab.profile)
+        
+        let tabView = TabView(selection: Binding(
+            get: { appState.activeTab },
+            set: { newValue in
+                // Prevent switching tabs during onboarding
+                if !isOnboarding {
+                    appState.activeTab = newValue
+                } else {
+                    // Force stay on AI tab during onboarding
+                    appState.activeTab = .chat
+                }
+            }
+        )) {
+            aiTab
+            scoreTab
+            profileTab
         }
-        .onChange(of: appState.summary?.userId ?? "", initial: false) { _, _ in
-            if let summary = appState.summary {
-                scoreViewModel.apply(summary)
+        
+        let configuredTabView = tabView
+            .environmentObject(scoreViewModel)
+            .environmentObject(appState)
+            .preferredColorScheme(.dark)
+            .onAppear {
+                handleOnAppear(isOnboarding: isOnboarding)
+            }
+            .onChange(of: appState.hasCompletedOnboarding) { oldValue, newValue in
+                handleOnboardingChange(oldValue: oldValue, newValue: newValue)
+            }
+            .onChange(of: appState.activeTab) { oldValue, newValue in
+                // Prevent tab switching during onboarding
+                if isOnboarding && newValue != .chat {
+                    appState.activeTab = .chat
+                }
+            }
+        
+        let withSummaryChange = configuredTabView
+            .onChange(of: appState.summary?.userId ?? "") { _, _ in
+                // Update score view model whenever summary changes (watch userId as proxy)
+                if appState.summary != nil {
+                    updateScoreViewModel()
+                    print("[MainTabView] Summary updated, applying to scoreViewModel")
+                }
+            }
+        
+        let withBiologicalAgeChange = withSummaryChange
+            .onChange(of: appState.summary?.state.currentBiologicalAgeYears ?? appState.summary?.state.chronologicalAgeYears ?? 0, initial: false) { _, _ in
+                updateScoreViewModel()
+            }
+        
+        let withAgingDebtChange = withBiologicalAgeChange
+            .onChange(of: appState.summary?.state.agingDebtYears ?? 0, initial: false) { _, _ in
+                updateScoreViewModel()
+            }
+        
+        let withTodayChange = withAgingDebtChange
+            .onChange(of: appState.summary?.today?.score ?? 0, initial: false) { _, _ in
+                updateScoreViewModel()
+            }
+        
+        return withTodayChange
+    }
+    
+    private func handleOnAppear(isOnboarding: Bool) {
+        // Force AI tab during onboarding
+        if isOnboarding {
+            appState.activeTab = .chat
+        }
+        
+        // Bootstrap app state
+        Task {
+            do {
+                try await appState.bootstrap(requireBackend: false)
+                // After bootstrap, update score view model if summary is available
+                await MainActor.run {
+                    if let summary = appState.summary {
+                        updateScoreViewModel()
+                        print("[MainTabView] Bootstrap complete, applied summary to scoreViewModel")
+                    }
+                }
+            } catch {
+                print("[MainTabView] Bootstrap failed: \(error)")
+                // Continue with cached data if bootstrap fails
+                await MainActor.run {
+                    if let summary = appState.summary {
+                        updateScoreViewModel()
+                        print("[MainTabView] Using cached summary after bootstrap failure")
+                    }
+                }
             }
         }
     }
+    
+    private func handleOnboardingChange(oldValue: Bool, newValue: Bool) {
+        // When onboarding completes, ensure we're on AI tab
+        if newValue && !oldValue {
+            appState.activeTab = .chat
+        }
+    }
+    
+    private func updateScoreViewModel() {
+        if let summary = appState.summary {
+            scoreViewModel.apply(summary)
+        }
+    }
+    
 }
 
 // MARK: - AI Coach View (Chat Screen)
@@ -65,43 +155,135 @@ struct AICoachView: View {
         let tempAppState = AppState(userId: AuthManager.shared.uid ?? "")
         _viewModel = StateObject(wrappedValue: ChatViewModel(appState: tempAppState))
     }
+    
+    private func updateDailyCheckInState() {
+        // Update daily check-in state based on backend summary.today
+        // Backend is source of truth - if summary.today exists, check-in is completed
+        if appState.isTodaySubmitted {
+            // Check-in already completed today - set to completed state
+            if case .inactive = viewModel.dailyCheckInState {
+                viewModel.dailyCheckInState = .completed
+            } else if case .active = viewModel.dailyCheckInState {
+                // Only update to completed if not currently active (user might be in the middle of check-in)
+                // Don't interrupt active check-in
+            }
+        } else {
+            // Check-in not completed today - allow starting check-in
+            if case .completed = viewModel.dailyCheckInState {
+                // Reset to inactive if it was completed but backend says it's not
+                viewModel.dailyCheckInState = .inactive
+            }
+        }
+    }
 
     var body: some View {
         let isDailyMode = viewModel.mode == .daily
         let isEmptyDaily = viewModel.messages.isEmpty && viewModel.mode == .daily
+        let isOnboarding = !appState.hasCompletedOnboarding || viewModel.mode == .onboarding
         
-        return VStack(spacing: 0) {
-            // Daily check-in pinned card (only in daily mode)
-            if isDailyMode {
-                DailyCheckInPinnedCard(viewModel: viewModel, appState: appState)
+        return buildBody(isDailyMode: isDailyMode, isEmptyDaily: isEmptyDaily, isOnboarding: isOnboarding)
+    }
+    
+    @ViewBuilder
+    private func buildBody(isDailyMode: Bool, isEmptyDaily: Bool, isOnboarding: Bool) -> some View {
+        VStack(spacing: 0) {
+            buildProgressBar()
+            buildDailyCheckInCard(isDailyMode: isDailyMode, isOnboarding: isOnboarding)
+            buildMessagesArea(isEmptyDaily: isEmptyDaily, isOnboarding: isOnboarding)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            buildInputBar(isOnboarding: isOnboarding)
+        }
+        .background(
+            BackgroundView()
+                .ignoresSafeArea()
+        )
+        .onAppear {
+            // Update viewModel's appState reference to use environment object
+            viewModel.appState = appState
+            
+            // Start onboarding if not completed and messages are empty
+            if !appState.hasCompletedOnboarding && viewModel.messages.isEmpty {
+                print("[AICoachView] Starting onboarding - mode: \(viewModel.mode), messages count: \(viewModel.messages.count)")
+                // Ensure mode is onboarding
+                if viewModel.mode != .onboarding {
+                    viewModel.mode = .onboarding
+                }
+                viewModel.startOnboarding()
             }
             
-            // Messages area
-            if isEmptyDaily {
+            // Update daily check-in state on appear
+            updateDailyCheckInState()
+        }
+    }
+    
+    @ViewBuilder
+    private func buildProgressBar() -> some View {
+        if viewModel.mode == .onboarding {
+            OnboardingProgressBar(
+                progress: viewModel.onboardingProgress,
+                currentQuestionIndex: viewModel.currentOnboardingQuestionIndex,
+                totalQuestions: QuestionBanks.onboardingQuestions.count
+            )
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+        }
+    }
+    
+    @ViewBuilder
+    private func buildDailyCheckInCard(isDailyMode: Bool, isOnboarding: Bool) -> some View {
+        if isDailyMode && !isOnboarding {
+            DailyCheckInPinnedCard(viewModel: viewModel, appState: appState)
+        }
+    }
+    
+    @ViewBuilder
+    private func buildInputBar(isOnboarding: Bool) -> some View {
+        if viewModel.mode == .daily && !isOnboarding {
+            InputBarView(
+                chatMessage: $chatMessage,
+                onSend: {
+                    if !chatMessage.isEmpty && viewModel.chatInputEnabled {
+                        viewModel.sendFreeTextMessage(chatMessage)
+                        chatMessage = ""
+                    }
+                }
+            )
+            .disabled(!viewModel.chatInputEnabled)
+            .opacity(viewModel.chatInputEnabled ? 1.0 : 0.4)
+        }
+    }
+    
+    @ViewBuilder
+    private func buildMessagesArea(isEmptyDaily: Bool, isOnboarding: Bool) -> some View {
+        if isEmptyDaily && !isOnboarding {
                 // Hero message for daily mode
                 VStack {
                     Spacer()
-                VStack(spacing: 12) {
+                    VStack(spacing: 12) {
                         Text("Longevity AI is ready.")
                             .font(.system(size: 20, weight: .medium))
                         Text("Let's optimize your healthspan.")
                             .font(.system(size: 20, weight: .medium))
                     }
                     .foregroundColor(.white.opacity(0.9))
-                            .multilineTextAlignment(.center)
+                    .multilineTextAlignment(.center)
                     .padding(.horizontal, 20)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        } else {
+            } else {
                 // Scrollable messages (always visible, but disabled when check-in is active)
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(spacing: 16) {
+                            // Show all messages
                             ForEach(viewModel.messages) { message in
                                 VStack(spacing: 8) {
                                     ChatBubbleView(message: message)
-                                        .opacity(viewModel.isChatDisabled ? 0.4 : 1.0)
+                                        // Don't reduce opacity during onboarding - messages should be fully visible
+                                        .opacity((viewModel.isChatDisabled && viewModel.mode != .onboarding) ? 0.4 : 1.0)
                                     
                                     // Retry button for failed submissions
                                     if !message.isUser,
@@ -150,7 +332,7 @@ struct AICoachView: View {
                                 .id(message.id)
                             }
                             
-                            // Onboarding question options
+                            // Onboarding question options - show after the last message
                             if viewModel.mode == .onboarding,
                                let question = viewModel.currentOnboardingQuestion,
                                !viewModel.isSubmitting {
@@ -160,72 +342,85 @@ struct AICoachView: View {
                                             title: option.title,
                                             isSelected: false,
                                             action: {
+                                                print("[AICoachView] Option tapped: \(option.title)")
                                                 viewModel.selectOnboardingOption(option)
                                             }
                                         )
+                                        .buttonStyle(PlainButtonStyle()) // Ensure button is tappable
                                     }
                                 }
-                                .padding(.horizontal, 20)
-                        .padding(.top, 8)
-                    }
-
+                                .padding(.horizontal, 0) // Already in VStack with padding
+                                .padding(.top, 8)
+                                .id("onboarding-options")
+                                .allowsHitTesting(true) // Ensure options are tappable
+                            }
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 16)
                         // Add extra bottom space when input is disabled to avoid overlap
                         .padding(.bottom, viewModel.chatInputEnabled ? 0 : 80)
                     }
-                    .disabled(viewModel.isChatDisabled)
+                    // Don't disable ScrollView during onboarding - only disable during daily check-in
+                    .disabled(viewModel.isChatDisabled && viewModel.mode != .onboarding)
+                    .onAppear {
+                        // Scroll to bottom when view appears (especially for onboarding)
+                        if !viewModel.messages.isEmpty {
+                            if let last = viewModel.messages.last {
+                                // Use longer delay for onboarding to ensure messages are rendered
+                                let delay = viewModel.mode == .onboarding ? 0.6 : 0.3
+                                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                                    withAnimation {
+                                        proxy.scrollTo(last.id, anchor: .bottom)
+                                    }
+                                }
+                            }
+                        }
+                        // Update daily check-in state based on summary.today
+                        updateDailyCheckInState()
+                    }
+                    .onChange(of: appState.summary?.today?.date ?? "") { _, _ in
+                        // Update daily check-in state when summary.today changes
+                        // This ensures UI reflects backend state (completed vs. not completed)
+                        updateDailyCheckInState()
+                    }
                     .onChange(of: viewModel.messages.count) {
+                        // Scroll to last message when new message is added
                         if let last = viewModel.messages.last {
-                            withAnimation {
-                                proxy.scrollTo(last.id, anchor: .bottom)
+                            // Use longer delay for onboarding to ensure messages are rendered
+                            let delay = viewModel.mode == .onboarding ? 0.5 : 0.2
+                            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                                withAnimation {
+                                    proxy.scrollTo(last.id, anchor: .bottom)
+                                }
+                            }
+                        }
+                    }
+                    .onChange(of: viewModel.currentOnboardingQuestionIndex) {
+                        // Scroll to options when new question appears
+                        if viewModel.mode == .onboarding {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                withAnimation {
+                                    proxy.scrollTo("onboarding-options", anchor: .bottom)
+                                }
+                            }
+                        }
+                    }
+                    .onChange(of: viewModel.mode) {
+                        // When switching to onboarding mode, scroll to bottom
+                        if viewModel.mode == .onboarding && !viewModel.messages.isEmpty {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                if let last = viewModel.messages.last {
+                                    withAnimation {
+                                        proxy.scrollTo(last.id, anchor: .bottom)
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            // Input bar (show in daily mode, but disabled when check-in is active)
-            if viewModel.mode == .daily {
-                InputBarView(
-                    chatMessage: $chatMessage,
-                    onSend: {
-                        if !chatMessage.isEmpty && viewModel.chatInputEnabled {
-                            viewModel.sendFreeTextMessage(chatMessage)
-                            chatMessage = ""
-                        }
-                    }
-                )
-                .disabled(!viewModel.chatInputEnabled)
-                .opacity(viewModel.chatInputEnabled ? 1.0 : 0.4)
-            } else if viewModel.mode == .onboarding {
-                // No input bar in onboarding mode
-                EmptyView()
-            }
-        }
-        .background(
-            BackgroundView()
-                .ignoresSafeArea()
-        )
-        .onAppear {
-            // Update viewModel's appState reference to use environment object
-            viewModel.appState = appState
-            
-            // Start onboarding if not completed
-            if !appState.hasCompletedOnboarding && viewModel.messages.isEmpty {
-                viewModel.startOnboarding()
-            }
-        }
-        .onChange(of: appState.hasCompletedOnboarding) { _, newValue in
-            if newValue && viewModel.mode == .onboarding {
-                // Switch to daily mode after onboarding
-                viewModel.mode = .daily
-            }
-        }
     }
-}
 
 // ChatMessage is now defined in ChatViewModel.swift
 
@@ -667,111 +862,169 @@ struct LongevityTrendView: View {
     
     @ViewBuilder
     private func statusChip(diff: Double, isGood: Bool) -> some View {
+        let chipColor = isGood ? Color.green : Color.orange
+        let chipText = isGood ? "Rejuvenation" : "Acceleration"
+        let chipIcon = isGood ? "✨" : "↗"
+        
         HStack(spacing: 6) {
-            Text(isGood ? "✨" : "↗")
-            Text(String(format: "%@: %+.1fy", isGood ? "Rejuvenation" : "Acceleration", diff))
+            Text(chipIcon)
+            Text(String(format: "%@: %+.2fy", chipText, diff))
                 .font(.system(size: 11, weight: .bold))
         }
-        .foregroundColor(isGood ? .green : .orange)
+        .foregroundColor(chipColor)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(
             Capsule()
-                .fill((isGood ? Color.green : Color.orange).opacity(0.1))
+                .fill(chipColor.opacity(0.1))
                 .overlay(
                     Capsule()
-                        .stroke((isGood ? Color.green : Color.orange).opacity(0.2), lineWidth: 1)
+                        .stroke(chipColor.opacity(0.2), lineWidth: 1)
                 )
         )
-        .shadow(color: (isGood ? Color.green : Color.orange).opacity(0.2), radius: 8)
+        .shadow(color: chipColor.opacity(0.2), radius: 8)
     }
     
     var body: some View {
         let diff = scoreViewModel.biologicalAgeYears - scoreViewModel.chronologicalAgeYears
         let isGood = diff <= 0
+        let header = headerRow(diff: diff, isGood: isGood)
+        let scrollContent = scrollViewContent(header: header)
         
-        ZStack {
+        let zStack = ZStack {
             Color.black.ignoresSafeArea()
+            scrollContent
+        }
+        
+        let configuredZStack = zStack
+            .onAppear {
+                // First try to apply cached summary if available
+                if let summary = appState.summary {
+                    updateScoreFromSummary()
+                    print("[LongevityTrendView] Applied cached summary on appear")
+                }
+                
+                // Then fetch fresh data
+                Task {
+                    await scoreViewModel.fetchSummary()
+                }
+            }
+            .onChange(of: appState.summary?.userId ?? "") { _, _ in
+                // Update score view model whenever summary changes (watch userId as proxy)
+                if appState.summary != nil {
+                    updateScoreFromSummary()
+                    print("[LongevityTrendView] Summary updated, applying to scoreViewModel")
+                }
+            }
+        
+        let withBiologicalAgeChange = configuredZStack
+            .onChange(of: appState.summary?.state.currentBiologicalAgeYears ?? appState.summary?.state.chronologicalAgeYears ?? 0, initial: false) { _, _ in
+                updateScoreFromSummary()
+            }
+        
+        let withAgingDebtChange = withBiologicalAgeChange
+            .onChange(of: appState.summary?.state.agingDebtYears ?? 0, initial: false) { _, _ in
+                updateScoreFromSummary()
+            }
+        
+        return withAgingDebtChange
+            .onChange(of: appState.summary?.today?.score ?? 0, initial: false) { _, _ in
+                updateScoreFromSummary()
+            }
+    }
+    
+    private func updateScoreFromSummary() {
+        if let summary = appState.summary {
+            scoreViewModel.apply(summary)
+        }
+    }
+    
+    @ViewBuilder
+    private func scrollViewContent(header: some View) -> some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                // 1. Header Row
+                header
+                .padding(.horizontal, screenPadding)
+                .padding(.top, 16)
+                .padding(.bottom, 32)
+                
+                // 2. Main Stats Block (Chronological & Biological)
+                mainStatsBlock
+                .padding(.horizontal, screenPadding)
+                .padding(.bottom, sectionSpacing)
+                
+                // 3. Time Range Segmented Control
+                timeRangeControl
+                .padding(.horizontal, screenPadding)
+                .padding(.bottom, sectionSpacing)
+                
+                // 4. Trend Graph Area with empty-state handling
+                trendSection()
+                
+                // 5. Metrics Row (Aging Debt / Today Δ)
+                metricsRow()
+                .padding(.horizontal, screenPadding)
+                .padding(.bottom, sectionSpacing)
+                
+                // 6. Share Insights Row
+                shareRow()
+                .padding(.horizontal, screenPadding)
+                .padding(.bottom, 100) // Extra padding to avoid TabBar overlap
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var mainStatsBlock: some View {
+        HStack(spacing: 24) {
+            StatColumn(
+                value: scoreViewModel.chronologicalAgeYears,
+                label: "CHRONOLOGICAL",
+                color: .white.opacity(0.4),
+                labelColor: .white.opacity(0.3)
+            )
             
-            ScrollView {
-                VStack(spacing: 0) {
-                    // 1. Header Row
-                    headerRow(diff: diff, isGood: isGood)
-                    .padding(.horizontal, screenPadding)
-                    .padding(.top, 16)
-                    .padding(.bottom, 32)
-                    
-                    // 2. Main Stats Block (Chronological & Biological)
-                    HStack(spacing: 24) {
-                        StatColumn(
-                            value: scoreViewModel.chronologicalAgeYears,
-                            label: "CHRONOLOGICAL",
-                            color: .white.opacity(0.4),
-                            labelColor: .white.opacity(0.3)
+            StatColumn(
+                value: scoreViewModel.biologicalAgeYears,
+                label: "BIOLOGICAL",
+                color: .green,
+                labelColor: .green.opacity(0.6),
+                hasGlow: true
+            )
+        }
+    }
+    
+    @ViewBuilder
+    private var timeRangeControl: some View {
+        HStack(spacing: 4) {
+            ForEach([TrendRange.weekly, .monthly, .yearly], id: \.self) { range in
+                Button(action: {
+                    selectedRange = range
+                }) {
+                    Text(range.rawValue.uppercased())
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(selectedRange == range ? .black : .white.opacity(0.6))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            Capsule()
+                                .fill(selectedRange == range ? Color.green : Color.clear)
                         )
-                        
-                        StatColumn(
-                            value: scoreViewModel.biologicalAgeYears,
-                            label: "BIOLOGICAL",
-                            color: .green,
-                            labelColor: .green.opacity(0.6),
-                            hasGlow: true
-                        )
-                    }
-                    .padding(.horizontal, screenPadding)
-                    .padding(.bottom, sectionSpacing)
-                    
-                    // 3. Time Range Segmented Control
-                    HStack(spacing: 4) {
-                        ForEach([TrendRange.weekly, .monthly, .yearly], id: \.self) { range in
-                            Button(action: {
-                                selectedRange = range
-                            }) {
-                                Text(range.rawValue.uppercased())
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(selectedRange == range ? .black : .white.opacity(0.6))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(
-                                        Capsule()
-                                            .fill(selectedRange == range ? Color.green : Color.clear)
-                                    )
-                            }
-                        }
-                    }
-                    .padding(6)
-                    .background(
-                        Capsule()
-                            .fill(Color.white.opacity(0.05))
-                            .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
-                    )
-                    .padding(.horizontal, screenPadding)
-                    .padding(.bottom, sectionSpacing)
-                    
-                    // 4. Trend Graph Area with empty-state handling
-                    trendSection()
-                    
-                    // 5. Metrics Row (Aging Debt / Today Δ)
-                    metricsRow()
-                    .padding(.horizontal, screenPadding)
-                    .padding(.bottom, sectionSpacing)
-                    
-                    // 6. Share Insights Row
-                    shareRow()
-                    .padding(.horizontal, screenPadding)
-                    .padding(.bottom, 100) // Extra padding to avoid TabBar overlap
                 }
             }
         }
-        .onAppear {
-            Task {
-                await scoreViewModel.fetchSummary()
-            }
-        }
-        .onChange(of: appState.summary?.userId ?? "", initial: false) { _, _ in
-            if let summary = appState.summary {
-                scoreViewModel.apply(summary)
-            }
+        .padding(6)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(0.05))
+                .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
+        )
+    }
+    
+    private func handleScoreViewAppear() {
+        Task {
+            await scoreViewModel.fetchSummary()
         }
     }
 }
@@ -1073,9 +1326,13 @@ struct PlanView: View {
 // MARK: - Profile View (System Configuration)
 struct ProfileView: View {
     @EnvironmentObject private var ageStore: AgeStore
+    @EnvironmentObject private var appState: AppState
+    @StateObject private var authManager = AuthManager.shared
     @State private var coachTone: CoachTone = .scientific
     @State private var responseStyle: ResponseStyle = .balanced
     @State private var selectedGoals: Set<OptimizationGoal> = [.highEnergy, .betterSleep, .stressResilience]
+    @State private var showLogoutAlert: Bool = false
+    @State private var isLoggingOut: Bool = false
     
     var body: some View {
         ZStack {
@@ -1126,7 +1383,7 @@ struct ProfileView: View {
                     // Header Block
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Gizem")
+                            Text(displayName)
                                 .font(.system(size: 36, weight: .bold))
                                 .foregroundColor(.white)
                             
@@ -1310,9 +1567,85 @@ struct ProfileView: View {
                         .font(.system(size: 9, weight: .medium))
                         .foregroundColor(.white.opacity(0.3))
                         .kerning(0.5)
-                        .padding(.bottom, 40)
+                        .padding(.bottom, 24)
+                    
+                    // Logout Button
+                    Button(action: {
+                        showLogoutAlert = true
+                    }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .font(.system(size: 16, weight: .semibold))
+                            
+                            Text("LOGOUT")
+                                .font(.system(size: 14, weight: .bold))
+                                .kerning(1)
+                        }
+                        .foregroundColor(.red.opacity(0.9))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.red.opacity(0.1))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                                )
+                        )
+                    }
+                    .disabled(isLoggingOut)
+                    .opacity(isLoggingOut ? 0.6 : 1)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
                 }
             }
+        }
+        .alert("Logout", isPresented: $showLogoutAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Logout", role: .destructive) {
+                Task {
+                    await handleLogout()
+                }
+            }
+        } message: {
+            Text("Are you sure you want to logout?")
+        }
+    }
+    
+    private var displayName: String {
+        if let firstName = appState.userFirstName, let lastName = appState.userLastName {
+            return "\(firstName) \(lastName)"
+        } else if let firstName = appState.userFirstName {
+            return firstName
+        } else if let lastName = appState.userLastName {
+            return lastName
+        } else {
+            return "User"
+        }
+    }
+    
+    private func handleLogout() async {
+        isLoggingOut = true
+        do {
+            // Call backend logout endpoint
+            try await APIClient.shared.postLogout()
+        } catch {
+            print("[ProfileView] Backend logout failed: \(error)")
+            // Continue with client-side logout even if backend fails
+        }
+        
+        // Client-side logout - must be on MainActor since AuthManager is @MainActor
+        await MainActor.run {
+            do {
+                try authManager.signOut()
+                print("[ProfileView] Successfully signed out from Firebase")
+            } catch {
+                print("[ProfileView] Sign out failed: \(error)")
+            }
+        }
+        
+        await MainActor.run {
+            isLoggingOut = false
         }
     }
     
@@ -1438,6 +1771,44 @@ struct OptionButton: View {
                             .stroke(isSelected ? Color.green.opacity(0.4) : Color.white.opacity(0.1), lineWidth: 1)
                     )
             )
+        }
+    }
+}
+
+struct OnboardingProgressBar: View {
+    let progress: Double // 0.0 to 1.0
+    let currentQuestionIndex: Int
+    let totalQuestions: Int
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            // Progress bar
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    // Background track
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(0.1))
+                        .frame(height: 6)
+                    
+                    // Progress fill
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.green)
+                        .frame(width: geometry.size.width * min(max(progress, 0), 1), height: 6)
+                        .animation(.easeInOut(duration: 0.3), value: progress)
+                }
+            }
+            .frame(height: 6)
+            
+            // Progress text
+            HStack {
+                Text("Question \(currentQuestionIndex + 1) of \(totalQuestions)")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+                Spacer()
+                Text("\(Int(progress * 100))%")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+            }
         }
     }
 }

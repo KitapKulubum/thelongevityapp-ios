@@ -82,7 +82,11 @@ class ChatViewModel: ObservableObject {
     }
     
     var chatInputEnabled: Bool {
-        // Disable chat input only when daily check-in is active AND expanded
+        // Disable chat input during onboarding
+        if mode == .onboarding {
+            return false
+        }
+        // Disable chat input when daily check-in is active AND expanded
         if case .active(let expanded) = dailyCheckInState, expanded {
             return false
         }
@@ -91,7 +95,11 @@ class ChatViewModel: ObservableObject {
     }
     
     var isChatDisabled: Bool {
-        // Chat is disabled (visually) only when daily check-in is active AND expanded
+        // Chat is disabled during onboarding
+        if mode == .onboarding {
+            return true
+        }
+        // Chat is disabled (visually) when daily check-in is active AND expanded
         if case .active(let expanded) = dailyCheckInState, expanded {
             return true
         }
@@ -110,6 +118,12 @@ class ChatViewModel: ObservableObject {
     
     init(appState: AppState) {
         self.appState = appState
+        // If onboarding is not completed, start in onboarding mode
+        if !appState.hasCompletedOnboarding {
+            self.mode = .onboarding
+            // Start onboarding immediately if not completed
+            // Note: This will be called again in onAppear, but that's OK - it checks if messages are empty
+        }
     }
     
     func startOnboarding() {
@@ -124,9 +138,12 @@ class ChatViewModel: ObservableObject {
             timestamp: Date()
         )
         messages.append(introMessage)
+        print("[ChatViewModel] Added intro message, total messages: \(messages.count)")
         
-        // Show first question
-        showNextOnboardingQuestion()
+        // Show first question after a brief delay to ensure intro message is rendered
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.showNextOnboardingQuestion()
+        }
     }
     
     private func showNextOnboardingQuestion() {
@@ -142,6 +159,7 @@ class ChatViewModel: ObservableObject {
             timestamp: Date()
         )
         messages.append(questionMessage)
+        print("[ChatViewModel] Added question message: \(question.prompt), total messages: \(messages.count)")
     }
     
     func selectOnboardingOption(_ option: OptionItem) {
@@ -178,10 +196,21 @@ class ChatViewModel: ObservableObject {
         
         Task {
             do {
-                // Get chronological age - should be provided by user or from backend
-                // For now, use a default or get from AgeStore if available
-                // TODO: Add chronological age input during onboarding
-                let chronologicalAge = 32.0 // Default fallback - should be user input
+                // Get chronological age from backend (from signup dateOfBirth)
+                // Priority: 1) AppState userChronologicalAge (from postAuthMe), 2) Summary state, 3) Fallback to 0
+                let chronologicalAge: Double = {
+                    if let age = appState.userChronologicalAge, age > 0 {
+                        return age
+                    } else if let summaryAge = appState.summary?.state.chronologicalAgeYears, summaryAge > 0 {
+                        return summaryAge
+                    } else {
+                        // This should not happen for new signups, but provide a safe fallback
+                        print("[ChatViewModel] Warning: No chronological age found, using 0")
+                        return 0.0
+                    }
+                }()
+                
+                print("[ChatViewModel] Using chronological age: \(chronologicalAge)")
                 
                 // Build payload from answers
         let payload = OnboardingAnswersPayload(
@@ -208,30 +237,75 @@ class ChatViewModel: ObservableObject {
                 
                 let result = try await APIClient.shared.postOnboarding(request)
                 
-                // Build explanation message
+                // Send timezone to backend after onboarding completion
+                let deviceTimezone = TimeZone.current.identifier
+                do {
+                    _ = try await APIClient.shared.patchProfile(timezone: deviceTimezone)
+                    await MainActor.run {
+                        appState.updateUserProfile(
+                            firstName: appState.userFirstName,
+                            lastName: appState.userLastName,
+                            chronologicalAge: appState.userChronologicalAge,
+                            timezone: deviceTimezone
+                        )
+                        print("[ChatViewModel] Timezone sent to backend: \(deviceTimezone)")
+                    }
+                } catch {
+                    print("[ChatViewModel] Failed to send timezone after onboarding: \(error)")
+                    // Don't block onboarding completion if timezone update fails
+                }
+                
+                // Build welcome message with onboarding results
                 let bioAge = result.currentBiologicalAgeYears
-                let diff = bioAge - result.chronologicalAgeYears
+                let chronoAge = result.chronologicalAgeYears
+                let diff = bioAge - chronoAge
+                let absDiff = abs(diff)
                 let direction = diff >= 0 ? "older" : "younger"
-                let diffText = String(format: "%.1f", abs(diff))
-                let explanation = """
-                Your estimated biological age is \(String(format: "%.1f", bioAge)) years (\(diffText) years \(direction) than your chronological age).
+                let diffText = String(format: "%.2f", absDiff)
                 
-                Total score: \(String(format: "%.0f", result.totalScore))
-                Baseline offset (BAOYears): \(String(format: "%.1f", result.BAOYears))
+                // Determine key insights based on score
+                let scoreInsight: String
+                if result.totalScore < -0.5 {
+                    scoreInsight = "Your lifestyle shows strong rejuvenation potential. Keep up these positive habits."
+                } else if result.totalScore > 0.5 {
+                    scoreInsight = "There are opportunities to optimize your daily habits for better biological aging."
+                } else {
+                    scoreInsight = "You're on a balanced path. Small improvements can enhance your results."
+                }
                 
-                This is a lifestyle-based estimate, not medical advice.
+                let welcomeMessage = """
+                Welcome! 🎉
+                
+                This app tracks your biological age based on daily lifestyle choices. Your baseline: \(String(format: "%.2f", bioAge)) years biological age (\(diffText) years \(direction) than your \(String(format: "%.0f", chronoAge)) chronological years).
+                
+                \(scoreInsight)
+                
+                Complete your daily check-in each day to see real-time updates on your Score tab. Your biological age and trends will update based on your daily habits.
+                
+                How can I help you today?
                 """
                 
-                let resultMessage = ChatMessage(
+                let welcomeChatMessage = ChatMessage(
                     role: .assistant,
-                    text: explanation,
+                    text: welcomeMessage,
                     timestamp: Date()
                 )
                 
                 await MainActor.run {
-                    messages.append(resultMessage)
+                    // Switch to daily mode first so welcome message is visible
+                    mode = .daily
+                    // Clear previous messages and add welcome message
+                    messages.removeAll()
+                    messages.append(welcomeChatMessage)
+                    print("[ChatViewModel] Welcome message added, mode: \(mode), messages count: \(messages.count)")
                     appState.markOnboardingComplete()
+                    // Set active tab to chat (AI) so user sees the welcome message
+                    appState.activeTab = .chat
                     submitState = .success
+                    
+                    isSubmitting = false
+                    cachedOnboardingRequest = nil
+                    lastFailedAction = nil
                     
                     // Refresh summary
                     Task {
@@ -244,12 +318,6 @@ class ChatViewModel: ObservableObject {
                             print("[ChatViewModel] Failed to refresh summary: \(error)")
                         }
                     }
-                    
-                    // Switch to daily mode
-                    mode = .daily
-                    isSubmitting = false
-                    cachedOnboardingRequest = nil
-                    lastFailedAction = nil
                 }
             } catch {
                 await MainActor.run {
@@ -306,12 +374,12 @@ class ChatViewModel: ObservableObject {
                 let bioAge = result.currentBiologicalAgeYears
                 let diff = bioAge - result.chronologicalAgeYears
                 let direction = diff >= 0 ? "older" : "younger"
-                let diffText = String(format: "%.1f", abs(diff))
+                let diffText = String(format: "%.2f", abs(diff))
                 let explanation = """
-                Your estimated biological age is \(String(format: "%.1f", bioAge)) years (\(diffText) years \(direction) than your chronological age).
+                Your estimated biological age is \(String(format: "%.2f", bioAge)) years (\(diffText) years \(direction) than your chronological age).
                 
-                Total score: \(String(format: "%.0f", result.totalScore))
-                Baseline offset (BAOYears): \(String(format: "%.1f", result.BAOYears))
+                Total score: \(String(format: "%.2f", result.totalScore))
+                Baseline offset (BAOYears): \(String(format: "%.2f", result.BAOYears))
                 
                 This is a lifestyle-based estimate, not medical advice.
                 """
@@ -361,6 +429,18 @@ class ChatViewModel: ObservableObject {
     }
     
     func toggleDailyCheckIn() {
+        // Check if today is already submitted (backend is source of truth)
+        if appState.isTodaySubmitted {
+            // Already completed today - show completed state or allow viewing
+            switch dailyCheckInState {
+            case .inactive, .completed:
+                dailyCheckInState = .completed
+            case .active(let expanded):
+                dailyCheckInState = .active(expanded: !expanded)
+            }
+            return
+        }
+        
         // Toggle arrow logic: only changes state, no chat messages
         switch dailyCheckInState {
         case .inactive:
@@ -400,8 +480,8 @@ class ChatViewModel: ObservableObject {
         
         Task {
             do {
-                let today = DateFormatter.yyyyMMdd.string(from: Date())
-                let metrics = buildDailyMetricsPayload(for: today)
+                // Note: date field removed - backend computes it based on user's timezone
+                let metrics = buildDailyMetricsPayload()
                 
                 let request = DailySubmitRequest(
                     metrics: metrics
@@ -414,7 +494,6 @@ class ChatViewModel: ObservableObject {
                 let result = try await APIClient.shared.postDaily(request)
                 
                 await MainActor.run {
-                    appState.updateLastDailyDate(today)
                     submitState = .success
                     
                     // Set state to completed
@@ -423,20 +502,38 @@ class ChatViewModel: ObservableObject {
                     // Completion message with insight and follow-up
                     let completionText: String
                     if let todayEntry = result.today {
-                        let delta = String(format: "%.2f", todayEntry.deltaYears)
+                        let absDelta = abs(todayEntry.deltaYears)
+                        let deltaFormatted = String(format: "%.2f", absDelta)
+                        let direction: String
+                        if todayEntry.deltaYears < 0 {
+                            direction = "\(deltaFormatted) years younger"
+                        } else if todayEntry.deltaYears > 0 {
+                            direction = "\(deltaFormatted) years older"
+                        } else {
+                            direction = "no change"
+                        }
+                        
+                        // Build reasons summary
+                        let reasonsText: String
+                        if !todayEntry.reasons.isEmpty {
+                            let reasonsList = todayEntry.reasons.prefix(3).joined(separator: ", ")
+                            reasonsText = "\n\nKey factors: \(reasonsList)"
+                        } else {
+                            reasonsText = ""
+                        }
+                        
                         completionText = """
                         Daily check-in completed ✅
                         
-                        Today's aging: \(delta) years
-                        Score: \(todayEntry.score)
+                        You're trending \(direction) today.\(reasonsText)
                         
-                        Want a quick plan to improve tomorrow's score?
+                        Is there a topic you'd like help with?
                         """
                     } else {
                         completionText = """
                         Daily check-in completed ✅
                         
-                        Want a quick plan to improve tomorrow's score?
+                        Is there a topic you'd like help with?
                         """
                     }
                     
@@ -465,7 +562,28 @@ class ChatViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    let errorMsg = "Couldn't save. Please try again."
+                    let errorMsg: String
+                    if error is DecodingError {
+                        errorMsg = "Server returned invalid data format. Please try again later."
+                    } else if let apiError = error as? APIError {
+                        switch apiError {
+                        case .invalidResponse:
+                            errorMsg = "Server returned invalid data format. Please try again later."
+                        case .networkError:
+                            errorMsg = "Network error. Please check your connection and try again."
+                        case .httpError(_, let statusCode, _):
+                            if statusCode >= 500 {
+                                errorMsg = "Server error. Please try again later."
+                            } else {
+                                errorMsg = "Couldn't save. Please try again."
+                            }
+                        default:
+                            errorMsg = "Couldn't save. Please try again."
+                        }
+                    } else {
+                        errorMsg = "Couldn't save. Please try again."
+                    }
+                    
                     submitState = .failed(errorMessage: errorMsg)
                     
                     let errorMessage = ChatMessage(
@@ -489,7 +607,6 @@ class ChatViewModel: ObservableObject {
                 let result = try await APIClient.shared.postDaily(request)
                 
                 await MainActor.run {
-                    appState.updateLastDailyDate(request.metrics.date)
                     submitState = .success
                     
                     // Set state to completed
@@ -503,7 +620,7 @@ class ChatViewModel: ObservableObject {
                         Daily check-in completed ✅
                         
                         Today's aging: \(delta) years
-                        Score: \(todayEntry.score)
+                        Score: \(String(format: "%.2f", todayEntry.score))
                         
                         Want a quick plan to improve tomorrow's score?
                         """
@@ -540,7 +657,28 @@ class ChatViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    let errorMsg = "Couldn't save. Please try again."
+                    let errorMsg: String
+                    if error is DecodingError {
+                        errorMsg = "Server returned invalid data format. Please try again later."
+                    } else if let apiError = error as? APIError {
+                        switch apiError {
+                        case .invalidResponse:
+                            errorMsg = "Server returned invalid data format. Please try again later."
+                        case .networkError:
+                            errorMsg = "Network error. Please check your connection and try again."
+                        case .httpError(_, let statusCode, _):
+                            if statusCode >= 500 {
+                                errorMsg = "Server error. Please try again later."
+                            } else {
+                                errorMsg = "Couldn't save. Please try again."
+                            }
+                        default:
+                            errorMsg = "Couldn't save. Please try again."
+                        }
+                    } else {
+                        errorMsg = "Couldn't save. Please try again."
+                    }
+                    
                     submitState = .failed(errorMessage: errorMsg)
                     
                     let errorMessage = ChatMessage(
@@ -614,7 +752,7 @@ class ChatViewModel: ObservableObject {
     
     // MARK: - Helpers
     
-    private func buildDailyMetricsPayload(for date: String) -> DailyMetricsPayload {
+    private func buildDailyMetricsPayload() -> DailyMetricsPayload {
         let sleepScore = dailyAnswers["sleep"] ?? 0
         let movementScore = dailyAnswers["movement"] ?? 0
         let foodScore = dailyAnswers["foodQuality"] ?? 0
@@ -642,7 +780,6 @@ class ChatViewModel: ObservableObject {
         let bedtimeHour = clamp(23 - sleepScore * 1.5, min: 20, max: 24)
         
         return DailyMetricsPayload(
-            date: date,
             sleepHours: sleepHours,
             steps: steps,
             vigorousMinutes: vigorousMinutes,

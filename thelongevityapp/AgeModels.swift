@@ -40,18 +40,34 @@ struct TrendResponse: Decodable {
 
 // MARK: - Stats Summary & History
 
-struct HistoryPoint: Codable, Identifiable {
+struct HistoryPoint: Codable, Identifiable, Equatable {
     var id = UUID()
     let date: String
     let biologicalAgeYears: Double
     let deltaYears: Double
-    let score: Int
+    let score: Double  // Changed from Int to Double to support decimal values like 2.5
+    
+    enum CodingKeys: String, CodingKey {
+        case date
+        case biologicalAgeYears
+        case deltaYears
+        case score
+        // id is excluded - it's generated locally, not from backend
+    }
+    
+    // Custom Equatable implementation - compare data fields, not id
+    static func == (lhs: HistoryPoint, rhs: HistoryPoint) -> Bool {
+        return lhs.date == rhs.date &&
+               lhs.biologicalAgeYears == rhs.biologicalAgeYears &&
+               lhs.deltaYears == rhs.deltaYears &&
+               lhs.score == rhs.score
+    }
 }
 
-struct BiologicalAgeState: Codable {
+struct BiologicalAgeState: Codable, Equatable {
     let chronologicalAgeYears: Double
-    let baselineBiologicalAgeYears: Double
-    let currentBiologicalAgeYears: Double
+    let baselineBiologicalAgeYears: Double?  // Optional for new users who haven't completed onboarding
+    let currentBiologicalAgeYears: Double?    // Optional for new users who haven't completed onboarding
     let agingDebtYears: Double
     let rejuvenationStreakDays: Int
     let accelerationStreakDays: Int
@@ -59,14 +75,14 @@ struct BiologicalAgeState: Codable {
     let totalAccelerationDays: Int
 }
 
-struct TodayEntry: Codable {
+struct TodayEntry: Codable, Equatable {
     let date: String
-    let score: Int
+    let score: Double  // Changed from Int to Double to support decimal values like -8.5
     let deltaYears: Double
     let reasons: [String]
 }
 
-struct StatsSummaryResponse: Codable {
+struct StatsSummaryResponse: Codable, Equatable {
     let userId: String
     let state: BiologicalAgeState
     let today: TodayEntry?
@@ -151,7 +167,7 @@ struct OnboardingAnswersPayload: Codable {
 }
 
 struct DailyMetricsPayload: Codable {
-    let date: String
+    // Note: date field removed - backend computes it based on user's timezone
     let sleepHours: Double
     let steps: Int
     let vigorousMinutes: Int

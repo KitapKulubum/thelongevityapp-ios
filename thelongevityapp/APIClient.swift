@@ -22,14 +22,42 @@ final class APIClient {
         #endif
     }
     
-    func postAuthMe(idToken: String) async throws -> AuthProfileResponse {
+    func postAuthMe(idToken: String, firstName: String? = nil, lastName: String? = nil, dateOfBirth: Date? = nil) async throws -> AuthProfileResponse {
         let url = baseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("me")
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONEncoder().encode(AuthMeRequest(idToken: idToken))
+        
+        // Format dateOfBirth as "yyyy-MM-dd" if provided
+        let dateOfBirthString: String?
+        if let date = dateOfBirth {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            dateOfBirthString = formatter.string(from: date)
+        } else {
+            dateOfBirthString = nil
+        }
+        
+        let request = AuthMeRequest(
+            idToken: idToken,
+            firstName: firstName,
+            lastName: lastName,
+            dateOfBirth: dateOfBirthString
+        )
+        urlRequest.httpBody = try JSONEncoder().encode(request)
         addAuthHeader(&urlRequest, token: idToken)
         return try await perform(urlRequest, as: AuthProfileResponse.self, endpoint: "/api/auth/me")
+    }
+    
+    func postLogout() async throws {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("logout")
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = try? await AuthManager.shared.getIDToken() {
+            addAuthHeader(&urlRequest, token: token)
+        }
+        _ = try await perform(urlRequest, as: EmptyResponse.self, endpoint: "/api/auth/logout")
     }
     
     func postOnboarding(_ request: OnboardingSubmitRequest) async throws -> OnboardingResultDTO {
@@ -46,8 +74,18 @@ final class APIClient {
     
     func getSummary() async throws -> StatsSummaryResponse {
         let url = baseURL.appendingPathComponent("api").appendingPathComponent("stats").appendingPathComponent("summary")
-        let urlRequest = try await authorizedRequest(url: url, method: "GET", body: Optional<Data>.none as Data?)
+        let urlRequest = try await authorizedRequest(url: url, method: "GET", body: nil as Data?)
         return try await perform(urlRequest, as: StatsSummaryResponse.self, endpoint: "/api/stats/summary")
+    }
+    
+    func patchProfile(timezone: String) async throws -> AuthProfileResponse {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("profile")
+        var urlRequest = try await authorizedRequest(url: url, method: "PATCH", body: nil as Data?)
+        
+        let requestBody = ProfileUpdateRequest(timezone: timezone)
+        urlRequest.httpBody = try JSONEncoder().encode(requestBody)
+        
+        return try await perform(urlRequest, as: AuthProfileResponse.self, endpoint: "/api/auth/profile")
     }
 }
 
@@ -64,7 +102,7 @@ enum APIError: LocalizedError {
         case .invalidURL(let endpoint):
             return "Invalid URL for \(endpoint)"
         case .invalidResponse(let endpoint):
-            return "Invalid response from \(endpoint)"
+            return "Invalid response from \(endpoint). The server returned data in an unexpected format."
         case .httpError(let endpoint, let statusCode, _):
             return "\(endpoint) returned status code \(statusCode)"
         case .networkError(let endpoint, let error):
@@ -103,6 +141,46 @@ private extension APIClient {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
     
+    private func printDecodingError(_ error: DecodingError, endpoint: String) {
+        switch error {
+        case .typeMismatch(let type, let context):
+            print("[APIClient] DECODING ERROR - Type Mismatch:")
+            print("  Expected type: \(type)")
+            print("  Coding path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+            print("  Debug: \(context.debugDescription)")
+            if let underlyingError = context.underlyingError {
+                print("  Underlying error: \(underlyingError)")
+            }
+        case .valueNotFound(let type, let context):
+            print("[APIClient] DECODING ERROR - Value Not Found:")
+            print("  Expected type: \(type)")
+            print("  Coding path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+            print("  Debug: \(context.debugDescription)")
+            print("  ⚠️ Backend is returning null for required field: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+        case .keyNotFound(let key, let context):
+            print("[APIClient] DECODING ERROR - Key Not Found:")
+            print("  Missing key: \(key.stringValue)")
+            print("  Coding path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+            print("  Debug: \(context.debugDescription)")
+            print("  ⚠️ Backend is missing required field: \(key.stringValue) at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+        case .dataCorrupted(let context):
+            print("[APIClient] DECODING ERROR - Data Corrupted:")
+            print("  Coding path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+            print("  Debug: \(context.debugDescription)")
+            if let underlyingError = context.underlyingError {
+                print("  Underlying error: \(underlyingError)")
+                if let nsError = underlyingError as NSError? {
+                    print("  Error domain: \(nsError.domain)")
+                    print("  Error code: \(nsError.code)")
+                    print("  Error userInfo: \(nsError.userInfo)")
+                }
+            }
+            print("  ⚠️ Backend is returning invalid data format at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+        @unknown default:
+            print("[APIClient] DECODING ERROR - Unknown: \(error)")
+        }
+    }
+    
     func perform<T: Decodable>(_ request: URLRequest, as type: T.Type, endpoint: String) async throws -> T {
         print("[APIClient] \(request.httpMethod ?? "") \(request.url?.absoluteString ?? "")")
         do {
@@ -120,9 +198,20 @@ private extension APIClient {
             }
             
             let decoder = JSONDecoder()
+            
+            // Log raw response for debugging
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("[APIClient] Raw response for \(endpoint): \(responseString.prefix(500))")
+            }
+            
             return try decoder.decode(T.self, from: data)
         } catch let error as APIError {
             throw error
+        } catch let decodingError as DecodingError {
+            // Decoding errors are not network errors - they indicate backend data format issues
+            print("[APIClient] \(endpoint) failed: Decoding error")
+            printDecodingError(decodingError, endpoint: endpoint)
+            throw APIError.invalidResponse(endpoint: endpoint)
         } catch {
             print("[APIClient] \(endpoint) failed: \(error.localizedDescription)")
             throw APIError.networkError(endpoint: endpoint, underlyingError: error)
@@ -133,11 +222,30 @@ private extension APIClient {
 // MARK: - DTOs
 struct AuthMeRequest: Codable {
     let idToken: String
+    let firstName: String?
+    let lastName: String?
+    let dateOfBirth: String?  // Format: "yyyy-MM-dd"
 }
 
 struct AuthProfileResponse: Codable {
     let uid: String
     let email: String?
-    let profile: [String: String]?
+    let hasCompletedOnboarding: Bool
+    let profile: ProfileInfo?
+    
+    struct ProfileInfo: Codable {
+        let firstName: String?
+        let lastName: String?
+        let chronologicalAgeYears: Double?
+        let timezone: String?  // IANA timezone identifier (e.g., "Europe/Istanbul")
+    }
+}
+
+struct EmptyResponse: Codable {
+    // Empty response for logout
+}
+
+struct ProfileUpdateRequest: Codable {
+    let timezone: String  // IANA timezone identifier
 }
 

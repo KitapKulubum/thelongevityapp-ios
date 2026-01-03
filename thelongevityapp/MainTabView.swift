@@ -234,7 +234,34 @@ struct AICoachView: View {
     @ViewBuilder
     private func buildDailyCheckInCard(isDailyMode: Bool, isOnboarding: Bool) -> some View {
         if isDailyMode && !isOnboarding {
-            DailyCheckInPinnedCard(viewModel: viewModel, appState: appState)
+            VStack(spacing: 8) {
+                DailyCheckInPinnedCard(viewModel: viewModel, appState: appState)
+                
+                // Show reminder message if daily check-in is not completed
+                if !appState.isTodaySubmitted {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundColor(.orange)
+                            .font(.system(size: 14))
+                        
+                        Text("Complete daily check-in to track your score")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.orange.opacity(0.9))
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.orange.opacity(0.1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.orange.opacity(0.2), lineWidth: 1)
+                            )
+                    )
+                    .padding(.horizontal, 20)
+                    .padding(.top, -4)
+                }
+            }
         }
     }
     
@@ -385,10 +412,16 @@ struct AICoachView: View {
                     }
                     .onChange(of: viewModel.messages.count) {
                         // Scroll to last message when new message is added
-                        if let last = viewModel.messages.last {
-                            // Use longer delay for onboarding to ensure messages are rendered
-                            let delay = viewModel.mode == .onboarding ? 0.5 : 0.2
-                            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        if viewModel.mode == .onboarding {
+                            // In onboarding mode, scroll to options instead of last message
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                                withAnimation {
+                                    proxy.scrollTo("onboarding-options", anchor: .bottom)
+                                }
+                            }
+                        } else if let last = viewModel.messages.last {
+                            // In daily mode, scroll to last message
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                 withAnimation {
                                     proxy.scrollTo(last.id, anchor: .bottom)
                                 }
@@ -398,7 +431,8 @@ struct AICoachView: View {
                     .onChange(of: viewModel.currentOnboardingQuestionIndex) {
                         // Scroll to options when new question appears
                         if viewModel.mode == .onboarding {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            // Use longer delay to ensure options are fully rendered
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
                                 withAnimation {
                                     proxy.scrollTo("onboarding-options", anchor: .bottom)
                                 }
@@ -429,17 +463,29 @@ struct ChatBubbleView: View {
     
     private var formattedText: String {
         let processed = message.text
-        // Handle headers by converting them to bold lines
+        // Handle markdown formatting: headers, bullet points, bold, etc.
         let lines = processed.components(separatedBy: CharacterSet.newlines)
         let cleanedLines = lines.map { line -> String in
             var l = line.trimmingCharacters(in: CharacterSet.whitespaces)
-            if l.hasPrefix("### ") {
+            
+            // Handle headers (####, ###, ##, #)
+            if l.hasPrefix("#### ") {
+                l = "**" + l.replacingOccurrences(of: "#### ", with: "") + "**"
+            } else if l.hasPrefix("### ") {
                 l = "**" + l.replacingOccurrences(of: "### ", with: "") + "**"
             } else if l.hasPrefix("## ") {
                 l = "**" + l.replacingOccurrences(of: "## ", with: "") + "**"
             } else if l.hasPrefix("# ") {
                 l = "**" + l.replacingOccurrences(of: "# ", with: "") + "**"
             }
+            
+            // Handle bullet points (* or -)
+            if l.hasPrefix("* ") {
+                l = "• " + l.replacingOccurrences(of: "* ", with: "")
+            } else if l.hasPrefix("- ") {
+                l = "• " + l.replacingOccurrences(of: "- ", with: "")
+            }
+            
             return l
         }
         return cleanedLines.joined(separator: "\n")
@@ -450,8 +496,10 @@ struct ChatBubbleView: View {
             if message.isUser { Spacer(minLength: 0) }
             
             Text(.init(formattedText))
-                .font(.system(size: 15))
+                .font(.system(size: 15, design: .default))
+                .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
                 .background(
@@ -838,15 +886,6 @@ struct LongevityTrendView: View {
     @ViewBuilder
     private func headerRow(diff: Double, isGood: Bool) -> some View {
         HStack {
-            Button(action: {}) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(12)
-                    .background(Circle().fill(Color.white.opacity(0.05)))
-            }
-            .frame(width: 44, height: 44)
-            
             Spacer()
             
             Text("LONGEVITY AGE & TREND")
@@ -1323,14 +1362,11 @@ struct PlanView: View {
     }
 }
 
-// MARK: - Profile View (System Configuration)
+// MARK: - Profile View (Profile & Settings)
 struct ProfileView: View {
     @EnvironmentObject private var ageStore: AgeStore
     @EnvironmentObject private var appState: AppState
     @StateObject private var authManager = AuthManager.shared
-    @State private var coachTone: CoachTone = .scientific
-    @State private var responseStyle: ResponseStyle = .balanced
-    @State private var selectedGoals: Set<OptimizationGoal> = [.highEnergy, .betterSleep, .stressResilience]
     @State private var showLogoutAlert: Bool = false
     @State private var isLoggingOut: Bool = false
     
@@ -1351,17 +1387,9 @@ struct ProfileView: View {
                 VStack(spacing: 0) {
                     // Top Nav Bar
                     HStack {
-                        Button(action: {}) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .semibold))
-                                        .foregroundColor(.white)
-                                .padding(12)
-                                .background(Circle().fill(Color.white.opacity(0.05)))
-                        }
-                        
                         Spacer()
                         
-                        Text("SYSTEM CONFIGURATION")
+                        Text("PROFILE & SETTINGS")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(.white.opacity(0.6))
                             .kerning(1.5)
@@ -1393,7 +1421,7 @@ struct ProfileView: View {
                                     .frame(width: 8, height: 8)
                                     .shadow(color: .green, radius: 4)
                                 
-                                Text("SYSTEM ACTIVE")
+                                Text("AI Coach Active")
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(.green)
                                     .kerning(1)
@@ -1416,158 +1444,6 @@ struct ProfileView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 40)
-                    
-                    // Current Optimization Goals Card
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("CURRENT OPTIMIZATION GOALS")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.white.opacity(0.4))
-                            .kerning(1)
-                        
-                        HStack(spacing: 12) {
-                            GoalChip(
-                                goal: .highEnergy,
-                                isSelected: selectedGoals.contains(.highEnergy),
-                                action: { toggleGoal(.highEnergy) }
-                            )
-                            
-                            GoalChip(
-                                goal: .betterSleep,
-                                isSelected: selectedGoals.contains(.betterSleep),
-                                action: { toggleGoal(.betterSleep) }
-                            )
-                            
-                            GoalChip(
-                                goal: .stressResilience,
-                                isSelected: selectedGoals.contains(.stressResilience),
-                                action: { toggleGoal(.stressResilience) }
-                            )
-                        }
-                    }
-                    .padding(20)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Color.white.opacity(0.05))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                            )
-                    )
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 24)
-                    
-                    // AI Personalization Core Card
-                    VStack(alignment: .leading, spacing: 24) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "gearshape.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(.green)
-                            
-                            Text("AI PERSONALIZATION CORE")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(.white.opacity(0.4))
-                                .kerning(1)
-                        }
-                        
-                        // Coach Tone
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("COACH TONE")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(.white.opacity(0.4))
-                                .kerning(1)
-                            
-                            HStack(spacing: 8) {
-                                SegmentedPill(
-                                    title: "Supportive",
-                                    isSelected: coachTone == .supportive,
-                                    action: { coachTone = .supportive }
-                                )
-                                
-                                SegmentedPill(
-                                    title: "Scientific",
-                                    isSelected: coachTone == .scientific,
-                                    action: { coachTone = .scientific }
-                                )
-                                
-                                SegmentedPill(
-                                    title: "Direct",
-                                    isSelected: coachTone == .direct,
-                                    action: { coachTone = .direct }
-                                )
-                            }
-                        }
-                        
-                        // Response Style
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("RESPONSE STYLE")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(.white.opacity(0.4))
-                                .kerning(1)
-                            
-                            HStack(spacing: 8) {
-                                SegmentedPill(
-                                    title: "Short",
-                                    isSelected: responseStyle == .short,
-                                    action: { responseStyle = .short }
-                                )
-                                
-                                SegmentedPill(
-                                    title: "Balanced",
-                                    isSelected: responseStyle == .balanced,
-                                    action: { responseStyle = .balanced }
-                                )
-                                
-                                SegmentedPill(
-                                    title: "Expert",
-                                    isSelected: responseStyle == .expert,
-                                    action: { responseStyle = .expert }
-                                )
-                            }
-                        }
-                    }
-                    .padding(20)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Color.white.opacity(0.05))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                            )
-                    )
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 40)
-                    
-                    // Update Configuration Button
-                    Button(action: updateConfiguration) {
-                        HStack(spacing: 12) {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 16, weight: .semibold))
-                            
-                            Text("UPDATE CONFIGURATION")
-                                .font(.system(size: 14, weight: .bold))
-                                .kerning(1)
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(
-                            LinearGradient(
-                                colors: [Color.green, Color.green.opacity(0.8)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                    .cornerRadius(16)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 12)
-                    
-                    // Latency Text
-                    Text("AI PROCESSING LATENCY: 12MS")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.white.opacity(0.3))
-                        .kerning(0.5)
-                        .padding(.bottom, 24)
                     
                     // Logout Button
                     Button(action: {
@@ -1649,18 +1525,6 @@ struct ProfileView: View {
         }
     }
     
-    private func toggleGoal(_ goal: OptimizationGoal) {
-        if selectedGoals.contains(goal) {
-            selectedGoals.remove(goal)
-        } else {
-            selectedGoals.insert(goal)
-        }
-    }
-    
-    private func updateConfiguration() {
-        // TODO: Save to backend or UserDefaults
-        print("Updating configuration: coachTone=\(coachTone), responseStyle=\(responseStyle), goals=\(selectedGoals)")
-    }
 }
 
 // MARK: - Supporting Types and Views

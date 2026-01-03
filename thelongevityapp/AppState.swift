@@ -29,9 +29,15 @@ class AppState: ObservableObject {
     @Published var userTimezone: String?  // IANA timezone identifier
     
     private let userDefaults = UserDefaults.standard
-    private let hasCompletedOnboardingKey = "hasCompletedOnboarding"
-    private let lastDailyDateSubmittedKey = "lastDailyDateSubmitted"
-    private let cachedSummaryKey = "cachedSummary"
+    private var hasCompletedOnboardingKey: String {
+        "hasCompletedOnboarding_\(userId)"
+    }
+    private var lastDailyDateSubmittedKey: String {
+        "lastDailyDateSubmitted_\(userId)"
+    }
+    private var cachedSummaryKey: String {
+        "cachedSummary_\(userId)"
+    }
     private let userFirstNameKey = "userFirstName"
     private let userLastNameKey = "userLastName"
     private let userChronologicalAgeKey = "userChronologicalAge"
@@ -125,7 +131,8 @@ class AppState: ObservableObject {
     }
     
     func bootstrap(requireBackend: Bool = false) async throws {
-        // Load flags from UserDefaults
+        // Load flags from UserDefaults (user-specific keys)
+        // Note: This is a fallback - backend response should override this
         hasCompletedOnboarding = userDefaults.bool(forKey: hasCompletedOnboardingKey)
         lastDailyDateSubmitted = userDefaults.string(forKey: lastDailyDateSubmittedKey)
         
@@ -154,6 +161,11 @@ class AppState: ObservableObject {
             userId = freshSummary.userId
             summary = freshSummary
             saveCachedSummary(freshSummary)
+            
+            // Backend is the source of truth - use hasCompletedOnboarding from summary response
+            // Use computed property that handles both explicit field and inferred status
+            setOnboardingStatus(freshSummary.onboardingStatus)
+            print("[AppState] Onboarding status from summary: \(freshSummary.onboardingStatus) (hasCompletedOnboarding field: \(freshSummary.hasCompletedOnboarding?.description ?? "nil"))")
             
             // Update chronological age from summary if not already set from profile
             if userChronologicalAge == nil || userChronologicalAge == 0 {
@@ -214,8 +226,13 @@ class AppState: ObservableObject {
         summary = newSummary
         saveCachedSummary(newSummary)
         userId = newSummary.userId
+        
+        // Update onboarding status from summary (backend is source of truth)
+        setOnboardingStatus(newSummary.onboardingStatus)
+        
         print("[AppState] Summary updated - userId: \(newSummary.userId), biologicalAge: \(newSummary.state.currentBiologicalAgeYears ?? newSummary.state.chronologicalAgeYears), agingDebt: \(newSummary.state.agingDebtYears), todayScore: \(newSummary.today?.score ?? 0)")
         print("[AppState] Summary has \(newSummary.weeklyHistory.count) weekly, \(newSummary.monthlyHistory.count) monthly, \(newSummary.yearlyHistory.count) yearly history points")
+        print("[AppState] Onboarding status updated from summary: \(newSummary.onboardingStatus)")
     }
     
     private func saveCachedSummary(_ summary: StatsSummaryResponse) {

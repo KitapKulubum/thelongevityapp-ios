@@ -89,6 +89,17 @@ struct StatsSummaryResponse: Codable, Equatable {
     let weeklyHistory: [HistoryPoint]
     let monthlyHistory: [HistoryPoint]
     let yearlyHistory: [HistoryPoint]
+    let hasCompletedOnboarding: Bool?  // Backend returns this field to indicate onboarding status (optional for backward compatibility)
+    
+    // Computed property to safely get onboarding status
+    var onboardingStatus: Bool {
+        // If hasCompletedOnboarding is explicitly set, use it
+        if let status = hasCompletedOnboarding {
+            return status
+        }
+        // Otherwise, infer from baselineBiologicalAgeYears (if it exists, onboarding is complete)
+        return state.baselineBiologicalAgeYears != nil
+    }
 }
 
 // Chat request/response kept for potential future use

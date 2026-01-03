@@ -105,9 +105,10 @@ struct RootView: View {
                             // Check if it's an invalid response error (decoding) - this can happen for new users
                             // But only redirect to onboarding if user hasn't completed it before
                             if isInvalidResponseError(error) {
-                                // Check if user has completed onboarding before from UserDefaults
+                                // Check if user has completed onboarding before from UserDefaults (user-specific key)
                                 // (This was set from postAuthMe response during login)
-                                let hasCompletedBefore = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+                                let userSpecificKey = "hasCompletedOnboarding_\(appState.userId)"
+                                let hasCompletedBefore = UserDefaults.standard.bool(forKey: userSpecificKey)
                                 if !hasCompletedBefore {
                                     print("[RootView] Invalid response error during app startup, allowing onboarding (new user)")
                                     await MainActor.run {

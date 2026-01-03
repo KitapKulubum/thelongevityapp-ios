@@ -118,12 +118,9 @@ class ChatViewModel: ObservableObject {
     
     init(appState: AppState) {
         self.appState = appState
-        // If onboarding is not completed, start in onboarding mode
-        if !appState.hasCompletedOnboarding {
-            self.mode = .onboarding
-            // Start onboarding immediately if not completed
-            // Note: This will be called again in onAppear, but that's OK - it checks if messages are empty
-        }
+        // Don't set mode here - wait for onAppear to check backend status
+        // This ensures we have the correct onboarding status from backend before deciding
+        // Mode will be set in onAppear based on appState.hasCompletedOnboarding
     }
     
     func startOnboarding() {
@@ -291,32 +288,58 @@ class ChatViewModel: ObservableObject {
                     timestamp: Date()
                 )
                 
-                await MainActor.run {
-                    // Switch to daily mode first so welcome message is visible
-                    mode = .daily
-                    // Clear previous messages and add welcome message
-                    messages.removeAll()
-                    messages.append(welcomeChatMessage)
-                    print("[ChatViewModel] Welcome message added, mode: \(mode), messages count: \(messages.count)")
-                    appState.markOnboardingComplete()
-                    // Set active tab to chat (AI) so user sees the welcome message
-                    appState.activeTab = .chat
-                    submitState = .success
+                // After successful onboarding submission, refresh auth status to get updated hasCompletedOnboarding
+                // This ensures we have the latest onboarding status from backend
+                do {
+                    let token = try await AuthManager.shared.getIDToken()
+                    let authResponse = try await APIClient.shared.postAuthMe(idToken: token)
                     
-                    isSubmitting = false
-                    cachedOnboardingRequest = nil
-                    lastFailedAction = nil
-                    
-                    // Refresh summary
-                    Task {
-                        do {
-                            let summary = try await APIClient.shared.getSummary()
-                            await MainActor.run {
-                                appState.updateSummary(summary)
+                    await MainActor.run {
+                        // Update onboarding status from backend response (source of truth)
+                        appState.setOnboardingStatus(authResponse.hasCompletedOnboarding)
+                        print("[ChatViewModel] Onboarding status from postAuthMe: \(authResponse.hasCompletedOnboarding)")
+                        
+                        // Switch to daily mode first so welcome message is visible
+                        mode = .daily
+                        // Clear previous messages and add welcome message
+                        messages.removeAll()
+                        messages.append(welcomeChatMessage)
+                        print("[ChatViewModel] Welcome message added, mode: \(mode), messages count: \(messages.count)")
+                        // Set active tab to chat (AI) so user sees the welcome message
+                        appState.activeTab = .chat
+                        submitState = .success
+                        
+                        isSubmitting = false
+                        cachedOnboardingRequest = nil
+                        lastFailedAction = nil
+                        
+                        // Refresh summary to get latest data including hasCompletedOnboarding
+                        Task {
+                            do {
+                                let summary = try await APIClient.shared.getSummary()
+                                await MainActor.run {
+                                    appState.updateSummary(summary)
+                                    // updateSummary already updates onboarding status from summary
+                                }
+                            } catch {
+                                print("[ChatViewModel] Failed to refresh summary: \(error)")
                             }
-                        } catch {
-                            print("[ChatViewModel] Failed to refresh summary: \(error)")
                         }
+                    }
+                } catch {
+                    // If postAuthMe fails, still mark onboarding as complete locally
+                    // but log the error
+                    print("[ChatViewModel] Failed to refresh auth status after onboarding: \(error)")
+                    await MainActor.run {
+                        appState.markOnboardingComplete()
+                        mode = .daily
+                        messages.removeAll()
+                        messages.append(welcomeChatMessage)
+                        appState.activeTab = .chat
+                        submitState = .success
+                        isSubmitting = false
+                        cachedOnboardingRequest = nil
+                        lastFailedAction = nil
                     }
                 }
             } catch {
@@ -390,26 +413,48 @@ class ChatViewModel: ObservableObject {
                     timestamp: Date()
                 )
                 
-                await MainActor.run {
-                    messages.append(resultMessage)
-                    appState.markOnboardingComplete()
-                    submitState = .success
+                // After successful onboarding submission, refresh auth status to get updated hasCompletedOnboarding
+                do {
+                    let token = try await AuthManager.shared.getIDToken()
+                    let authResponse = try await APIClient.shared.postAuthMe(idToken: token)
                     
-                    Task {
-                        do {
-                            let summary = try await APIClient.shared.getSummary()
-                            await MainActor.run {
-                                appState.updateSummary(summary)
+                    await MainActor.run {
+                        // Update onboarding status from backend response (source of truth)
+                        appState.setOnboardingStatus(authResponse.hasCompletedOnboarding)
+                        print("[ChatViewModel] Retry - Onboarding status from postAuthMe: \(authResponse.hasCompletedOnboarding)")
+                        
+                        messages.append(resultMessage)
+                        submitState = .success
+                        
+                        Task {
+                            do {
+                                let summary = try await APIClient.shared.getSummary()
+                                await MainActor.run {
+                                    appState.updateSummary(summary)
+                                    // updateSummary already updates onboarding status from summary
+                                }
+                            } catch {
+                                print("[ChatViewModel] Failed to refresh summary: \(error)")
                             }
-                        } catch {
-                            print("[ChatViewModel] Failed to refresh summary: \(error)")
                         }
+                        
+                        mode = .daily
+                        isSubmitting = false
+                        cachedOnboardingRequest = nil
+                        lastFailedAction = nil
                     }
-                    
-                    mode = .daily
-                    isSubmitting = false
-                    cachedOnboardingRequest = nil
-                    lastFailedAction = nil
+                } catch {
+                    // If postAuthMe fails, still mark onboarding as complete locally
+                    print("[ChatViewModel] Retry - Failed to refresh auth status after onboarding: \(error)")
+                    await MainActor.run {
+                        appState.markOnboardingComplete()
+                        messages.append(resultMessage)
+                        submitState = .success
+                        mode = .daily
+                        isSubmitting = false
+                        cachedOnboardingRequest = nil
+                        lastFailedAction = nil
+                    }
                 }
             } catch {
                 await MainActor.run {

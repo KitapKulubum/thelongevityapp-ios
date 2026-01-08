@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Charts
 
 struct MainTabView: View {
     @StateObject private var scoreViewModel = ScoreViewModel()
@@ -112,7 +113,7 @@ struct MainTabView: View {
                 try await appState.bootstrap(requireBackend: false)
                 // After bootstrap, update score view model if summary is available
                 await MainActor.run {
-                    if let summary = appState.summary {
+                    if appState.summary != nil {
                         updateScoreViewModel()
                         print("[MainTabView] Bootstrap complete, applied summary to scoreViewModel")
                     }
@@ -121,7 +122,7 @@ struct MainTabView: View {
                 print("[MainTabView] Bootstrap failed: \(error)")
                 // Continue with cached data if bootstrap fails
                 await MainActor.run {
-                    if let summary = appState.summary {
+                    if appState.summary != nil {
                         updateScoreViewModel()
                         print("[MainTabView] Using cached summary after bootstrap failure")
                     }
@@ -311,6 +312,12 @@ struct AICoachView: View {
                                     ChatBubbleView(message: message)
                                         // Don't reduce opacity during onboarding - messages should be fully visible
                                         .opacity((viewModel.isChatDisabled && viewModel.mode != .onboarding) ? 0.4 : 1.0)
+                                    
+                                    // Loading indicator when waiting for AI response
+                                    if viewModel.isWaitingForResponse && message.id == viewModel.messages.last?.id && message.isUser {
+                                        LongevityAILoadingView()
+                                            .padding(.top, 8)
+                                    }
                                     
                                     // Retry button for failed submissions
                                     if !message.isUser,
@@ -779,6 +786,7 @@ struct LongevityTrendView: View {
     @EnvironmentObject private var scoreViewModel: ScoreViewModel
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @StateObject private var deltaViewModel = DeltaAnalyticsViewModel()
     @State private var selectedRange: TrendRange = .weekly
     
     // Design tokens
@@ -786,44 +794,15 @@ struct LongevityTrendView: View {
     private let sectionSpacing: CGFloat = 24
     private let cardRadius: CGFloat = 20
     
-    // Derived helpers to keep the body simpler for the compiler
-    private var currentHistory: [HistoryPoint] {
-        switch selectedRange {
-        case .weekly:
-            return scoreViewModel.weeklyHistory
-        case .monthly:
-            return scoreViewModel.monthlyHistory
-        case .yearly:
-            return scoreViewModel.yearlyHistory
-        }
-    }
-    
-    private var placeholderText: String {
-        switch selectedRange {
-        case .weekly:
-            return "Not enough data for a weekly trend yet. Keep logging your daily check-ins."
-        case .monthly:
-            return "Not enough data for a monthly trend yet."
-        case .yearly:
-            return "Not enough data for a yearly trend yet."
-        }
-    }
-    
     @ViewBuilder
     private func trendSection() -> some View {
-        if currentHistory.count >= 2 {
-            TrendChartView(points: currentHistory)
-                .frame(height: 240)
-                .padding(.horizontal, screenPadding)
-                .padding(.bottom, sectionSpacing)
-        } else {
-            VStack(spacing: 12) {
-                Text(placeholderText)
-                    .font(.system(size: 12))
-                    .foregroundColor(.gray)
-            }
-            .frame(height: 240)
-            .frame(maxWidth: .infinity)
+        VStack(spacing: 0) {
+            // Delta Chart View
+            DeltaChartView(
+                viewModel: deltaViewModel,
+                range: selectedRange.rawValue
+            )
+            .frame(minHeight: 240)
             .padding(.horizontal, screenPadding)
             .padding(.bottom, sectionSpacing)
         }
@@ -846,6 +825,8 @@ struct LongevityTrendView: View {
             
             Spacer()
             
+            // Rejuvenation streak from backend - date-based and consecutive
+            // Frontend does NOT calculate this - it comes from backend API
             if scoreViewModel.rejuvenationStreakDays > 0 {
                 streakBadge()
             }
@@ -854,6 +835,7 @@ struct LongevityTrendView: View {
     
     @ViewBuilder
     private func streakBadge() -> some View {
+        // Streak value from backend - date-based and consecutive (not calculated locally)
         HStack(spacing: 6) {
             Text("🔥")
             Text("\(scoreViewModel.rejuvenationStreakDays) DAY STREAK")
@@ -901,13 +883,33 @@ struct LongevityTrendView: View {
     
     @ViewBuilder
     private func statusChip(diff: Double, isGood: Bool) -> some View {
-        let chipColor = isGood ? Color.green : Color.orange
-        let chipText = isGood ? "Rejuvenation" : "Acceleration"
-        let chipIcon = isGood ? "✨" : "↗"
+        // Use diff to determine status
+        let trendValue: Double = diff
+        let trendLabel: String = isGood ? "Rejuvenation" : "Acceleration"
+        
+        let chipColor: Color = {
+            if trendValue < 0 {
+                return .green
+            } else if trendValue > 0 {
+                return .orange
+            } else {
+                return .white.opacity(0.6)
+            }
+        }()
+        
+        let chipIcon: String = {
+            if trendValue < 0 {
+                return "✨"
+            } else if trendValue > 0 {
+                return "↗"
+            } else {
+                return "—"
+            }
+        }()
         
         HStack(spacing: 6) {
             Text(chipIcon)
-            Text(String(format: "%@: %+.2fy", chipText, diff))
+            Text(String(format: "%@: %+.2fy", trendLabel, trendValue))
                 .font(.system(size: 11, weight: .bold))
         }
         .foregroundColor(chipColor)
@@ -938,7 +940,7 @@ struct LongevityTrendView: View {
         let configuredZStack = zStack
             .onAppear {
                 // First try to apply cached summary if available
-                if let summary = appState.summary {
+                if appState.summary != nil {
                     updateScoreFromSummary()
                     print("[LongevityTrendView] Applied cached summary on appear")
                 }
@@ -946,6 +948,8 @@ struct LongevityTrendView: View {
                 // Then fetch fresh data
                 Task {
                     await scoreViewModel.fetchSummary()
+                    // Load delta analytics data
+                    deltaViewModel.loadData(range: selectedRange.rawValue)
                 }
             }
             .onChange(of: appState.summary?.userId ?? "") { _, _ in
@@ -1040,6 +1044,8 @@ struct LongevityTrendView: View {
             ForEach([TrendRange.weekly, .monthly, .yearly], id: \.self) { range in
                 Button(action: {
                     selectedRange = range
+                    // Update delta analytics when range changes
+                    deltaViewModel.loadData(range: range.rawValue)
                 }) {
                     Text(range.rawValue.uppercased())
                         .font(.system(size: 11, weight: .bold))
@@ -1211,6 +1217,90 @@ struct TrendChartView: View {
                             .offset(y: 40)
                     }
                     .position(lastPoint)
+                }
+            }
+        }
+    }
+}
+
+// New chart view for Trends API (TrendPointNew)
+struct TrendChartViewNew: View {
+    let points: [TrendPointNew]
+    let color: Color = .green // Match Biological Age color
+    
+    var body: some View {
+        GeometryReader { geometry in
+            if points.isEmpty {
+                EmptyView()
+            } else {
+                let width = geometry.size.width
+                let height = geometry.size.height
+                
+                let ages = points.map { $0.biologicalAge }
+                let maxAge = ages.max() ?? 33.0
+                let minAge = ages.min() ?? 31.0
+                let ageRange = max(maxAge - minAge, 1.0)
+                
+                // Generate points for the path
+                let chartPoints = points.enumerated().map { index, point in
+                    CGPoint(
+                        x: width * CGFloat(index) / CGFloat(max(points.count - 1, 1)),
+                        y: height * (0.8 - (point.biologicalAge - minAge) / ageRange * 0.6)
+                    )
+                }
+                
+                ZStack {
+                    // Background Gradient Fill
+                    Path { path in
+                        guard !chartPoints.isEmpty else { return }
+                        path.move(to: CGPoint(x: 0, y: height))
+                        path.addLine(to: chartPoints[0])
+                        
+                        for i in 1..<chartPoints.count {
+                            let mid = CGPoint(x: (chartPoints[i-1].x + chartPoints[i].x) / 2, y: (chartPoints[i-1].y + chartPoints[i].y) / 2)
+                            path.addQuadCurve(to: mid, control: chartPoints[i-1])
+                        }
+                        path.addLine(to: chartPoints.last!)
+                        path.addLine(to: CGPoint(x: width, y: height))
+                        path.closeSubpath()
+                    }
+                    .fill(
+                        LinearGradient(
+                            colors: [color.opacity(0.15), Color.clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    
+                    // Chart Line (Smooth)
+                    Path { path in
+                        guard !chartPoints.isEmpty else { return }
+                        path.move(to: chartPoints[0])
+                        
+                        for i in 1..<chartPoints.count {
+                            let p0 = chartPoints[i-1]
+                            let p1 = chartPoints[i]
+                            let controlPoint1 = CGPoint(x: (p0.x + p1.x) / 2, y: p0.y)
+                            let controlPoint2 = CGPoint(x: (p0.x + p1.x) / 2, y: p1.y)
+                            path.addCurve(to: p1, control1: controlPoint1, control2: controlPoint2)
+                        }
+                    }
+                    .stroke(
+                        LinearGradient(colors: [color, color.opacity(0.5)], startPoint: .leading, endPoint: .trailing),
+                        style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
+                    )
+                    .shadow(color: color.opacity(0.4), radius: 10, x: 0, y: 5)
+                    
+                    // "Now" Indicator at the very end
+                    if let lastPoint = chartPoints.last {
+                        ZStack {
+                            Circle()
+                                .fill(color)
+                                .frame(width: 12, height: 12)
+                                .shadow(color: color, radius: 10)
+                        }
+                        .position(lastPoint)
+                    }
                 }
             }
         }
@@ -1819,5 +1909,338 @@ struct DailyCheckInPinnedCard: View {
                 .padding(.bottom, 8)
             }
         }
+    }
+}
+
+// MARK: - Longevity AI Loading View
+struct LongevityAILoadingView: View {
+    @State private var rotation: Double = 0
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Infinity symbol with rotation animation
+            ZStack {
+                // Infinity symbol path
+                InfinityShape()
+                    .stroke(Color(red: 0.2, green: 0.5, blue: 0.35), lineWidth: 2.5)
+                    .frame(width: 28, height: 14)
+                    .rotationEffect(.degrees(rotation))
+            }
+            .frame(width: 36, height: 36)
+            
+            Text("Longevity AI")
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundColor(.white.opacity(0.7))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color.white.opacity(0.05))
+        )
+        .onAppear {
+            withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: false)) {
+                rotation = 360
+            }
+        }
+    }
+}
+
+// Infinity symbol shape
+struct InfinityShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let width = rect.width
+        let height = rect.height
+        let centerX = width / 2
+        let centerY = height / 2
+        let radius = min(width, height) / 4
+        
+        // Left loop - complete circle
+        path.addArc(
+            center: CGPoint(x: centerX - radius, y: centerY),
+            radius: radius,
+            startAngle: .degrees(0),
+            endAngle: .degrees(360),
+            clockwise: false
+        )
+        
+        // Right loop - complete circle
+        path.addArc(
+            center: CGPoint(x: centerX + radius, y: centerY),
+            radius: radius,
+            startAngle: .degrees(0),
+            endAngle: .degrees(360),
+            clockwise: false
+        )
+        
+        return path
+    }
+}
+
+// MARK: - Delta Analytics Chart Views
+
+struct DeltaChartView: View {
+    @ObservedObject var viewModel: DeltaAnalyticsViewModel
+    let range: String  // "weekly", "monthly", or "yearly"
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Mini Summary (inside chart container)
+            if let summary = viewModel.dailySummary ?? viewModel.yearlySummary {
+                DeltaSummaryView(summary: summary)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+            }
+            
+            // Chart Area
+            if viewModel.isLoading {
+                DeltaChartLoadingView()
+                    .frame(height: 200)
+            } else if let error = viewModel.errorMessage {
+                DeltaChartErrorView(message: error)
+                    .frame(height: 200)
+            } else if range == "yearly" {
+                YearlyDeltaChartView(points: viewModel.monthlyPoints)
+                    .frame(height: 200)
+            } else {
+                DailyDeltaChartView(points: viewModel.dailyPoints)
+                    .frame(height: 200)
+            }
+        }
+    }
+}
+
+// MARK: - Mini Summary View
+
+struct DeltaSummaryView: View {
+    let summary: DeltaSummary
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            // Net Delta (Baseline dahil toplam)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Net Delta")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+                Text(formatDelta(summary.netDeltaYears))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(summary.netDeltaYears >= 0 ? .green : .red)
+            }
+            
+            Spacer()
+            
+            // Rejuvenation
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Rejuvenation")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+                Text(formatDelta(summary.rejuvenationYears))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.green)
+            }
+            
+            Spacer()
+            
+            // Aging
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Aging")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+                Text(formatDelta(summary.agingYears))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.red)
+            }
+            
+            Spacer()
+            
+            // Check-ins
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Check-ins")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+                Text("\(summary.checkIns)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white.opacity(0.9))
+            }
+        }
+        .padding(.vertical, 8)
+    }
+    
+    private func formatDelta(_ value: Double) -> String {
+        let sign = value >= 0 ? "+" : ""
+        return String(format: "\(sign)%.2f", value)
+    }
+}
+
+// MARK: - Daily Chart View (Weekly/Monthly)
+
+struct DailyDeltaChartView: View {
+    let points: [DeltaDailyPoint]
+    
+    var body: some View {
+        if points.isEmpty {
+            VStack {
+                Text("No data available")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            Chart {
+                ForEach(points, id: \.date) { point in
+                    if let dailyDeltaYears = point.dailyDeltaYears {
+                        LineMark(
+                            x: .value("Date", parseDate(point.date)),
+                            y: .value("Delta", dailyDeltaYears)
+                        )
+                        .foregroundStyle(dailyDeltaYears >= 0 ? .green : .red)
+                        .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
+                        
+                        PointMark(
+                            x: .value("Date", parseDate(point.date)),
+                            y: .value("Delta", dailyDeltaYears)
+                        )
+                        .foregroundStyle(dailyDeltaYears >= 0 ? .green : .red)
+                        .symbolSize(40)
+                    }
+                    // If dailyDeltaYears is nil, no mark is drawn (creates gap)
+                }
+                
+                // Zero line
+                RuleMark(y: .value("Zero", 0))
+                    .foregroundStyle(.white.opacity(0.3))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
+            }
+            .chartXAxis {
+                AxisMarks(values: .automatic) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                        .foregroundStyle(.white.opacity(0.1))
+                    AxisValueLabel(format: .dateTime.month().day())
+                        .foregroundStyle(.white.opacity(0.6))
+                        .font(.system(size: 9))
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                        .foregroundStyle(.white.opacity(0.1))
+                    AxisValueLabel()
+                        .foregroundStyle(.white.opacity(0.6))
+                        .font(.system(size: 9))
+                }
+            }
+            .chartPlotStyle { plotArea in
+                plotArea
+                    .background(Color.clear)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+    }
+    
+    private func parseDate(_ dateString: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone.current
+        return formatter.date(from: dateString) ?? Date()
+    }
+}
+
+// MARK: - Yearly Chart View
+
+struct YearlyDeltaChartView: View {
+    let points: [DeltaMonthlyPoint]
+    
+    var body: some View {
+        if points.isEmpty {
+            VStack {
+                Text("No data available")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            Chart {
+                ForEach(points, id: \.month) { point in
+                    BarMark(
+                        x: .value("Month", parseMonth(point.month)),
+                        y: .value("Net Delta", point.rangeNetDeltaYears)
+                    )
+                    .foregroundStyle(point.rangeNetDeltaYears >= 0 ? .green : .red)
+                    .cornerRadius(4)
+                }
+                
+                // Zero line
+                RuleMark(y: .value("Zero", 0))
+                    .foregroundStyle(.white.opacity(0.3))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
+            }
+            .chartXAxis {
+                AxisMarks(values: .automatic) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                        .foregroundStyle(.white.opacity(0.1))
+                    AxisValueLabel(format: .dateTime.month(.abbreviated))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .font(.system(size: 9))
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                        .foregroundStyle(.white.opacity(0.1))
+                    AxisValueLabel()
+                        .foregroundStyle(.white.opacity(0.6))
+                        .font(.system(size: 9))
+                }
+            }
+            .chartPlotStyle { plotArea in
+                plotArea
+                    .background(Color.clear)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+    }
+    
+    private func parseMonth(_ monthString: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        formatter.timeZone = TimeZone.current
+        return formatter.date(from: monthString) ?? Date()
+    }
+}
+
+// MARK: - Loading View
+
+struct DeltaChartLoadingView: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: .green))
+            Text("Loading chart...")
+                .font(.system(size: 12))
+                .foregroundColor(.white.opacity(0.6))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Error View
+
+struct DeltaChartErrorView: View {
+    let message: String
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 20))
+                .foregroundColor(.white.opacity(0.6))
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundColor(.white.opacity(0.6))
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

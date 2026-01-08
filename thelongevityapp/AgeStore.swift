@@ -8,22 +8,22 @@
 import Foundation
 import SwiftUI
 
-// Type aliases for cleaner API
-typealias AgeState = BiologicalAgeState
-typealias DailyResult = TodayEntry
-
 @MainActor
 final class AgeStore: ObservableObject {
     // Legacy properties (kept for backward compatibility)
-    @Published var state: AgeState?
-    @Published var today: DailyResult?
+    @Published var state: BiologicalAgeState?
+    @Published var today: TodayEntry?
     
     // New properties for Insights
     @Published var profileChronologicalAgeYears: Double?
     @Published var currentBiologicalAgeYears: Double?
     @Published var agingDebtYears: Double?
-    @Published var rejuvenationStreakDays: Int = 0
-    @Published var accelerationStreakDays: Int = 0
+    
+    // Streak values from backend - date-based and consecutive
+    // Frontend does NOT calculate these - they come from backend API responses
+    // Backend calculates streaks based on consecutive days, not check-in count
+    @Published var rejuvenationStreakDays: Int = 0  // From backend: consecutive days with biological age decrease
+    @Published var accelerationStreakDays: Int = 0  // From backend: consecutive days with biological age increase
     @Published var totalRejuvenationDays: Int = 0
     @Published var totalAccelerationDays: Int = 0
     @Published var todayDeltaYears: Double?
@@ -74,20 +74,25 @@ final class AgeStore: ObservableObject {
     
     private func updateFromSummary(_ summary: StatsSummaryResponse) {
         print("[AgeStore] Updating from summary:")
-        print("  - Biological age: \(summary.state.currentBiologicalAgeYears)")
+        print("  - Biological age: \(summary.state.currentBiologicalAgeYears ?? summary.state.chronologicalAgeYears)")
         currentBiologicalAgeYears = summary.state.currentBiologicalAgeYears
         profileChronologicalAgeYears = summary.state.chronologicalAgeYears
         agingDebtYears = summary.state.agingDebtYears
+        
+        // Streak values from backend - date-based and consecutive (not calculated locally)
         rejuvenationStreakDays = summary.state.rejuvenationStreakDays
         accelerationStreakDays = summary.state.accelerationStreakDays
         totalRejuvenationDays = summary.state.totalRejuvenationDays
         totalAccelerationDays = summary.state.totalAccelerationDays
         
         // Update legacy state for backward compatibility
+        // Use chronological age as fallback for optional biological age fields
+        let baselineBioAge = summary.state.baselineBiologicalAgeYears ?? summary.state.chronologicalAgeYears
+        let currentBioAge = summary.state.currentBiologicalAgeYears ?? summary.state.chronologicalAgeYears
         state = BiologicalAgeState(
             chronologicalAgeYears: summary.state.chronologicalAgeYears,
-            baselineBiologicalAgeYears: summary.state.baselineBiologicalAgeYears,
-            currentBiologicalAgeYears: summary.state.currentBiologicalAgeYears,
+            baselineBiologicalAgeYears: baselineBioAge,
+            currentBiologicalAgeYears: currentBioAge,
             agingDebtYears: summary.state.agingDebtYears,
             rejuvenationStreakDays: summary.state.rejuvenationStreakDays,
             accelerationStreakDays: summary.state.accelerationStreakDays,
@@ -126,6 +131,9 @@ final class AgeStore: ObservableObject {
     }
     
     // Helper method to update all properties from response
+    // Note: Streak values come from backend - date-based and consecutive
+    // Backend calculates: today = lastCheckInDate + 1 day → streak + 1
+    //                     today > lastCheckInDate + 1 day → streak = 1 (reset)
     private func updateFromResponse(_ response: AgeStateResponse) {
         print("[AgeStore] Updating from response:")
         print("  - Profile chronological: \(response.profile.chronologicalAgeYears)")
@@ -133,15 +141,18 @@ final class AgeStore: ObservableObject {
         print("  - State biological: \(response.state.currentBiologicalAgeYears)")
         print("  - State aging debt: \(response.state.agingDebtYears)")
         print("  - State rejuvenation streak: \(response.state.rejuvenationStreakDays)")
+        print("  - State acceleration streak: \(response.state.accelerationStreakDays)")
         
         // Ensure UI updates on main thread (though @MainActor handles this, being explicit doesn't hurt)
-            profileChronologicalAgeYears = response.profile.chronologicalAgeYears
-            currentBiologicalAgeYears = response.state.currentBiologicalAgeYears
-            agingDebtYears = response.state.agingDebtYears
-            rejuvenationStreakDays = response.state.rejuvenationStreakDays
-            accelerationStreakDays = response.state.accelerationStreakDays
-            totalRejuvenationDays = response.state.totalRejuvenationDays
-            totalAccelerationDays = response.state.totalAccelerationDays
+        profileChronologicalAgeYears = response.profile.chronologicalAgeYears
+        currentBiologicalAgeYears = response.state.currentBiologicalAgeYears
+        agingDebtYears = response.state.agingDebtYears
+        
+        // Streak values from backend - date-based and consecutive (not calculated locally)
+        rejuvenationStreakDays = response.state.rejuvenationStreakDays
+        accelerationStreakDays = response.state.accelerationStreakDays
+        totalRejuvenationDays = response.state.totalRejuvenationDays
+        totalAccelerationDays = response.state.totalAccelerationDays
         
         // Update today entry if available
         if let today = response.today {
@@ -156,10 +167,13 @@ final class AgeStore: ObservableObject {
         }
             
             // Update legacy state
+            // Use chronological age as fallback for optional biological age fields
+            let baselineBioAge = response.profile.baselineBiologicalAgeYears
+            let currentBioAge = response.state.currentBiologicalAgeYears
             state = BiologicalAgeState(
                 chronologicalAgeYears: response.profile.chronologicalAgeYears,
-                baselineBiologicalAgeYears: response.profile.baselineBiologicalAgeYears,
-                currentBiologicalAgeYears: response.state.currentBiologicalAgeYears,
+                baselineBiologicalAgeYears: baselineBioAge,
+                currentBiologicalAgeYears: currentBioAge,
                 agingDebtYears: response.state.agingDebtYears,
                 rejuvenationStreakDays: response.state.rejuvenationStreakDays,
                 accelerationStreakDays: response.state.accelerationStreakDays,

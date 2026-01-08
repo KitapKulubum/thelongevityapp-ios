@@ -56,6 +56,7 @@ class ChatViewModel: ObservableObject {
     @Published var dailyCheckInState: DailyCheckInState = .inactive
     @Published var isSubmitting: Bool = false
     @Published var submitState: SubmitState = .idle
+    @Published var isWaitingForResponse: Bool = false  // Loading state for AI chat responses
     
     var appState: AppState
     
@@ -772,26 +773,32 @@ class ChatViewModel: ObservableObject {
         )
         messages.append(userMessage)
         
+        // Set loading state
+        isWaitingForResponse = true
+        
         // Send to chat API
         LongevityAPI.shared.sendChatMessage(message: text) { [weak self] result in
                 DispatchQueue.main.async {
+                    // Clear loading state
+                    self?.isWaitingForResponse = false
+                    
                     switch result {
                     case .success(let answer):
-                    let assistantMessage = ChatMessage(
-                        role: .assistant,
-                        text: answer,
-                        timestamp: Date()
-                    )
-                    self?.messages.append(assistantMessage)
-                case .failure(_):
-                    let errorMessage = ChatMessage(
-                        role: .assistant,
-                        text: "Sorry, I couldn't process that. Please try again.",
-                        timestamp: Date()
-                    )
-                    self?.messages.append(errorMessage)
+                        let assistantMessage = ChatMessage(
+                            role: .assistant,
+                            text: answer,
+                            timestamp: Date()
+                        )
+                        self?.messages.append(assistantMessage)
+                    case .failure(_):
+                        let errorMessage = ChatMessage(
+                            role: .assistant,
+                            text: "Sorry, I couldn't process that. Please try again.",
+                            timestamp: Date()
+                        )
+                        self?.messages.append(errorMessage)
+                    }
                 }
-            }
         }
     }
     

@@ -14,12 +14,39 @@ enum TrendRange: String, CaseIterable, Hashable {
     case yearly = "yearly"
 }
 
-// Trend point model
+// Period enum for trends API
+enum Period: String, CaseIterable {
+    case weekly = "WEEKLY"
+    case monthly = "MONTHLY"
+    case yearly = "YEARLY"
+}
+
+// Trend point model (legacy - for old API)
 struct TrendPoint: Decodable, Identifiable {
     var id: String { date }
     let date: String
     let biologicalAgeYears: Double
     let agingDebtYears: Double
+}
+
+// New Trends API Models
+struct TrendPointNew: Decodable, Identifiable {
+    var id: String { date }
+    let date: String  // YYYY-MM-DD format
+    let biologicalAge: Double
+}
+
+struct TrendBucket: Decodable {
+    let value: Double?  // Can be null if not available
+    let available: Bool
+    let projection: Bool?  // Only present for yearly when < 365 entries
+    let points: [TrendPointNew]?  // Optional array of chart points
+}
+
+struct TrendsResponse: Decodable {
+    let weekly: TrendBucket
+    let monthly: TrendBucket
+    let yearly: TrendBucket
 }
 
 // Trend response model (legacy)
@@ -211,5 +238,66 @@ struct DailySubmitRequest: Codable {
 struct DailyResultDTO: Codable {
     let state: BiologicalAgeState
     let today: TodayEntry?
+}
+
+// MARK: - Delta Analytics Models
+
+struct DeltaDailyPoint: Decodable {
+    let date: String  // YYYY-MM-DD format
+    let dailyDeltaYears: Double?  // Can be null for missing days (renamed from delta)
+}
+
+struct DeltaMonthlyPoint: Decodable {
+    let month: String  // YYYY-MM format
+    let rangeNetDeltaYears: Double  // Net delta for this month only (renamed from netDelta)
+    let checkIns: Int
+    let avgDeltaPerCheckIn: Double
+}
+
+struct DeltaSummary: Decodable {
+    let netDeltaYears: Double  // Baseline dahil toplam delta (renamed from netDelta)
+    let rangeNetDeltaYears: Double?  // Sadece seçili range içindeki delta (optional - backend'den gelmeyebilir)
+    let rejuvenationYears: Double  // Sum of positive deltas (renamed from rejuvenation)
+    let agingYears: Double  // Sum of absolute negative deltas (renamed from aging)
+    let checkIns: Int
+    let avgDeltaPerCheckIn: Double
+}
+
+// Weekly/Monthly Response
+struct WeeklyDeltaResponse: Decodable {
+    let range: String
+    let timezone: String
+    let baselineDeltaYears: Double  // Root level: Onboarding'deki baseline delta
+    let totalDeltaYears: Double  // Root level: Baseline + tüm daily deltas
+    let entriesCount: Int?  // Total entries count (optional, backend'den gelmeyebilir)
+    let entriesInRange: Int?  // Entries in selected range (optional, backend'den gelmeyebilir)
+    let start: String?  // Optional - backend'den gelmeyebilir
+    let end: String?  // Optional - backend'den gelmeyebilir
+    let series: [DeltaDailyPoint]?  // Optional - backend response'unda olmayabilir
+    let summary: DeltaSummary
+}
+
+// Monthly Response (same structure as weekly)
+typealias MonthlyDeltaResponse = WeeklyDeltaResponse
+
+// Yearly Response
+struct YearlyDeltaResponse: Decodable {
+    let range: String
+    let timezone: String
+    let baselineDeltaYears: Double  // Root level: Onboarding'deki baseline delta
+    let totalDeltaYears: Double  // Root level: Baseline + tüm daily deltas
+    let entriesCount: Int?  // Total entries count (optional, backend'den gelmeyebilir)
+    let entriesInRange: Int?  // Entries in selected range (optional, backend'den gelmeyebilir)
+    let start: String?  // Optional - backend'den gelmeyebilir
+    let end: String?  // Optional - backend'den gelmeyebilir
+    let series: [DeltaMonthlyPoint]?  // Optional - backend response'unda olmayabilir
+    let summary: DeltaSummary
+}
+
+// Union type for response
+enum DeltaAnalyticsResponse {
+    case weekly(WeeklyDeltaResponse)
+    case monthly(MonthlyDeltaResponse)
+    case yearly(YearlyDeltaResponse)
 }
 

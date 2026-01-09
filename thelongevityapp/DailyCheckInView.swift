@@ -24,7 +24,8 @@ struct DailyCheckInView: View {
     @State private var currentBiologicalAge: Double?
     @State private var agingDebt: Double?
     @State private var rejuvenationStreak: Int?
-    @State private var todayScore: Int?
+    @State private var accelerationStreak: Int?
+    @State private var todayScore: Double?
     @State private var todayDeltaYears: Double?
 
     
@@ -253,10 +254,9 @@ struct DailyCheckInView: View {
                     }
                     if hasResult,
                        let bioAge = currentBiologicalAge,
-                       let debt = agingDebt,
-                       let streak = rejuvenationStreak {
+                       let debt = agingDebt {
 
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("Today's Result")
                                 .font(.title3.bold())
 
@@ -265,9 +265,36 @@ struct DailyCheckInView: View {
 
                             Text(String(format: "Aging Debt: %.2f years", debt))
                                 .foregroundColor(debt > 0 ? .red : .green)
-
-                            Text("Rejuvenation Streak: \(streak) day\(streak == 1 ? "" : "s")")
-                                .foregroundColor(streak > 0 ? .green : .secondary)
+                            
+                            // Rejuvenation Streak (from backend - date-based, consecutive)
+                            if let streak = rejuvenationStreak, streak > 0 {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "flame.fill")
+                                        .foregroundColor(.orange)
+                                    Text("\(streak) day\(streak == 1 ? "" : "s") rejuvenation streak")
+                                        .font(.subheadline)
+                                        .foregroundColor(.green)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.green.opacity(0.1))
+                                .cornerRadius(20)
+                            }
+                            
+                            // Acceleration Streak (from backend - date-based, consecutive)
+                            if let accelStreak = accelerationStreak, accelStreak > 0 {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.red)
+                                    Text("\(accelStreak) day\(accelStreak == 1 ? "" : "s") acceleration streak")
+                                        .font(.subheadline)
+                                        .foregroundColor(.red)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.red.opacity(0.1))
+                                .cornerRadius(20)
+                            }
                         }
                         .padding()
                         .background(Color(.systemGray6))
@@ -330,8 +357,16 @@ struct DailyCheckInView: View {
                 self.isSaving = false
                 
                 if let error = ageStore.lastError {
-                    self.alertMessage = "Network error: \(error.localizedDescription)"
-                    self.showAlert = true
+                    // Handle 409 Conflict (same day check-in attempt)
+                    // Backend returns 409 when user tries to check-in on the same day twice
+                    if let nsError = error as NSError?,
+                       nsError.code == 409 {
+                        self.alertMessage = "You have already completed today's check-in. Please try again tomorrow."
+                        self.showAlert = true
+                    } else {
+                        self.alertMessage = "Network error: \(error.localizedDescription)"
+                        self.showAlert = true
+                    }
                 } else {
                     // Success - refresh all insights data
                     Task {
@@ -340,15 +375,19 @@ struct DailyCheckInView: View {
                     }
                     
                     // Update local state for display
+                    // Note: All streak values come from backend - date-based and consecutive
+                    // Frontend does NOT calculate streaks, only displays them
                     self.currentBiologicalAge = ageStore.currentBiologicalAgeYears
                     self.agingDebt = ageStore.agingDebtYears
                     self.rejuvenationStreak = ageStore.rejuvenationStreakDays
+                    self.accelerationStreak = ageStore.accelerationStreakDays
                     self.hasResult = true
                     
                     // Push latest state into shared ScoreViewModel so Score tab updates immediately.
+                    // Streak values are from backend response, not calculated locally
                     if let state = ageStore.state {
                         scoreViewModel.chronologicalAgeYears = state.chronologicalAgeYears // chronological age is fixed from backend
-                        scoreViewModel.biologicalAgeYears = state.currentBiologicalAgeYears
+                        scoreViewModel.biologicalAgeYears = state.currentBiologicalAgeYears ?? state.chronologicalAgeYears
                         scoreViewModel.agingDebtYears = state.agingDebtYears
                         scoreViewModel.rejuvenationStreakDays = state.rejuvenationStreakDays
                         scoreViewModel.accelerationStreakDays = state.accelerationStreakDays
@@ -366,6 +405,7 @@ struct DailyCheckInView: View {
                         if diff < 0 {
                             message += String(format: "Rejuvenation: %.2f years. ", diff)
                             message += "Bugün gençleşme yönündesin"
+                            // Streak value from backend (date-based, consecutive)
                             if ageStore.rejuvenationStreakDays > 0 {
                                 message += " (+ \(ageStore.rejuvenationStreakDays) day streak)"
                             }
@@ -375,6 +415,10 @@ struct DailyCheckInView: View {
                         } else {
                             message += String(format: "Aging debt: +%.2f years. ", diff)
                             message += "Bugün hızlanma var, yarın 1–2 öneri ile düzeltebilirsin. "
+                            // Show acceleration streak if present
+                            if ageStore.accelerationStreakDays > 0 {
+                                message += "(\(ageStore.accelerationStreakDays) day acceleration streak)"
+                            }
                         }
                     } else {
                         message += "Your biological age is updated."

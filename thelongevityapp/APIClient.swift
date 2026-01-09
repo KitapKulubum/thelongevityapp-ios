@@ -87,6 +87,65 @@ final class APIClient {
         
         return try await perform(urlRequest, as: AuthProfileResponse.self, endpoint: "/api/auth/profile")
     }
+    
+    func fetchTrends() async throws -> TrendsResponse {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("longevity").appendingPathComponent("trends")
+        let urlRequest = try await authorizedRequest(url: url, method: "GET", body: nil as Data?)
+        return try await perform(urlRequest, as: TrendsResponse.self, endpoint: "/api/longevity/trends")
+    }
+    
+    func getDeltaAnalytics(range: String) async throws -> DeltaAnalyticsResponse {
+        guard ["weekly", "monthly", "yearly"].contains(range) else {
+            throw APIError.invalidURL(endpoint: "/api/analytics/delta")
+        }
+        
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("analytics").appendingPathComponent("delta")
+            .appending(queryItems: [URLQueryItem(name: "range", value: range)])
+        
+        let urlRequest = try await authorizedRequest(url: url, method: "GET", body: nil as Data?)
+        
+        // Log full response before decoding
+        do {
+            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse(endpoint: "/api/analytics/delta")
+            }
+            
+            guard httpResponse.statusCode == 200 else {
+                let responseBody = String(data: data, encoding: .utf8) ?? "(unable to decode)"
+                throw APIError.httpError(endpoint: "/api/analytics/delta", statusCode: httpResponse.statusCode, responseBody: responseBody)
+            }
+            
+            // Log full response for debugging
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("[APIClient] Full response for /api/analytics/delta: \(responseString)")
+            }
+            
+            let decoder = JSONDecoder()
+            
+            // Determine response type based on range and decode accordingly
+            if range == "yearly" {
+                let yearlyResponse = try decoder.decode(YearlyDeltaResponse.self, from: data)
+                return .yearly(yearlyResponse)
+            } else {
+                let dailyResponse = try decoder.decode(WeeklyDeltaResponse.self, from: data)
+                if range == "weekly" {
+                    return .weekly(dailyResponse)
+                } else {
+                    return .monthly(dailyResponse)
+                }
+            }
+        } catch let decodingError as DecodingError {
+            print("[APIClient] /api/analytics/delta failed: Decoding error")
+            printDecodingError(decodingError, endpoint: "/api/analytics/delta")
+            throw APIError.invalidResponse(endpoint: "/api/analytics/delta")
+        } catch let error as APIError {
+            throw error
+        } catch {
+            print("[APIClient] /api/analytics/delta failed: \(error.localizedDescription)")
+            throw APIError.networkError(endpoint: "/api/analytics/delta", underlyingError: error)
+        }
+    }
 }
 
 // MARK: - API Error Types

@@ -14,12 +14,15 @@ final class ScoreViewModel: ObservableObject {
     @Published var biologicalAgeYears: Double = 0
     @Published var agingDebtYears: Double = 0
     
-    @Published var rejuvenationStreakDays: Int = 0
-    @Published var accelerationStreakDays: Int = 0
+    // Streak values from backend - date-based and consecutive
+    // Frontend does NOT calculate these - they come from backend API responses
+    // Backend calculates streaks based on consecutive days, not check-in count
+    @Published var rejuvenationStreakDays: Int = 0  // From backend: consecutive days with biological age decrease
+    @Published var accelerationStreakDays: Int = 0  // From backend: consecutive days with biological age increase
     @Published var totalRejuvenationDays: Int = 0
     @Published var totalAccelerationDays: Int = 0
     
-    @Published var todayScore: Int?
+    @Published var todayScore: Double?
     @Published var todayDeltaYears: Double?
     
     @Published var weeklyHistory: [HistoryPoint] = []
@@ -47,11 +50,13 @@ final class ScoreViewModel: ObservableObject {
     }
     
     func apply(_ summary: StatsSummaryResponse) {
+        print("[ScoreViewModel] Applying summary - userId: \(summary.userId), biologicalAge: \(summary.state.currentBiologicalAgeYears ?? summary.state.chronologicalAgeYears), agingDebt: \(summary.state.agingDebtYears)")
         // Chronological age is fixed, sourced from backend only.
         chronologicalAgeYears = summary.state.chronologicalAgeYears
-        biologicalAgeYears = summary.state.currentBiologicalAgeYears
+        biologicalAgeYears = summary.state.currentBiologicalAgeYears ?? summary.state.chronologicalAgeYears
         agingDebtYears = summary.state.agingDebtYears
         
+        // Streak values from backend - date-based and consecutive (not calculated locally)
         rejuvenationStreakDays = summary.state.rejuvenationStreakDays
         accelerationStreakDays = summary.state.accelerationStreakDays
         totalRejuvenationDays = summary.state.totalRejuvenationDays

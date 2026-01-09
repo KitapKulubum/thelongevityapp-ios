@@ -51,19 +51,19 @@ class DeltaAnalyticsViewModel: ObservableObject {
             
             switch response {
             case .weekly(let data):
-                self.dailyPoints = data.series ?? []
+                self.dailyPoints = data.series
                 self.dailySummary = data.summary
                 self.monthlyPoints = []
                 self.yearlySummary = nil
                 
             case .monthly(let data):
-                self.dailyPoints = data.series ?? []
+                self.dailyPoints = data.series
                 self.dailySummary = data.summary
                 self.monthlyPoints = []
                 self.yearlySummary = nil
                 
             case .yearly(let data):
-                self.monthlyPoints = data.series ?? []
+                self.monthlyPoints = data.series
                 self.yearlySummary = data.summary
                 self.dailyPoints = []
                 self.dailySummary = nil

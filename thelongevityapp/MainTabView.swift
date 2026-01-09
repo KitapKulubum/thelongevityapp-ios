@@ -2165,9 +2165,9 @@ struct YearlyDeltaChartView: View {
                 ForEach(points, id: \.month) { point in
                     BarMark(
                         x: .value("Month", parseMonth(point.month)),
-                        y: .value("Net Delta", point.rangeNetDeltaYears)
+                        y: .value("Net Delta", point.netDelta)
                     )
-                    .foregroundStyle(point.rangeNetDeltaYears >= 0 ? .green : .red)
+                    .foregroundStyle(point.netDelta >= 0 ? .green : .red)
                     .cornerRadius(4)
                 }
                 

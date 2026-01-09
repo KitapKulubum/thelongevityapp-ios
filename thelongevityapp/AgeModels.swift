@@ -249,18 +249,18 @@ struct DeltaDailyPoint: Decodable {
 
 struct DeltaMonthlyPoint: Decodable {
     let month: String  // YYYY-MM format
-    let rangeNetDeltaYears: Double  // Net delta for this month only (renamed from netDelta)
-    let checkIns: Int
-    let avgDeltaPerCheckIn: Double
+    let netDelta: Double  // O ayın net delta toplamı
+    let checkIns: Int  // O ayın check-in sayısı
+    let avgDeltaPerCheckIn: Double  // Ortalama delta per check-in
 }
 
 struct DeltaSummary: Decodable {
-    let netDeltaYears: Double  // Baseline dahil toplam delta (renamed from netDelta)
-    let rangeNetDeltaYears: Double?  // Sadece seçili range içindeki delta (optional - backend'den gelmeyebilir)
-    let rejuvenationYears: Double  // Sum of positive deltas (renamed from rejuvenation)
-    let agingYears: Double  // Sum of absolute negative deltas (renamed from aging)
-    let checkIns: Int
-    let avgDeltaPerCheckIn: Double
+    let netDeltaYears: Double  // Baseline dahil toplam delta - UI'da bunu göster
+    let rangeNetDeltaYears: Double  // Sadece seçili range içindeki delta (referans için)
+    let rejuvenationYears: Double  // Pozitif deltaların toplamı
+    let agingYears: Double  // Negatif deltaların mutlak değer toplamı
+    let checkIns: Int  // Seçili aralıktaki check-in sayısı
+    let avgDeltaPerCheckIn: Double?  // Optional - backend'den gelmeyebilir
 }
 
 // Weekly/Monthly Response
@@ -269,11 +269,9 @@ struct WeeklyDeltaResponse: Decodable {
     let timezone: String
     let baselineDeltaYears: Double  // Root level: Onboarding'deki baseline delta
     let totalDeltaYears: Double  // Root level: Baseline + tüm daily deltas
-    let entriesCount: Int?  // Total entries count (optional, backend'den gelmeyebilir)
-    let entriesInRange: Int?  // Entries in selected range (optional, backend'den gelmeyebilir)
-    let start: String?  // Optional - backend'den gelmeyebilir
-    let end: String?  // Optional - backend'den gelmeyebilir
-    let series: [DeltaDailyPoint]?  // Optional - backend response'unda olmayabilir
+    let start: String  // Range başlangıç tarihi (YYYY-MM-DD)
+    let end: String  // Range bitiş tarihi (YYYY-MM-DD)
+    let series: [DeltaDailyPoint]  // Günlük delta noktaları
     let summary: DeltaSummary
 }
 
@@ -286,11 +284,9 @@ struct YearlyDeltaResponse: Decodable {
     let timezone: String
     let baselineDeltaYears: Double  // Root level: Onboarding'deki baseline delta
     let totalDeltaYears: Double  // Root level: Baseline + tüm daily deltas
-    let entriesCount: Int?  // Total entries count (optional, backend'den gelmeyebilir)
-    let entriesInRange: Int?  // Entries in selected range (optional, backend'den gelmeyebilir)
-    let start: String?  // Optional - backend'den gelmeyebilir
-    let end: String?  // Optional - backend'den gelmeyebilir
-    let series: [DeltaMonthlyPoint]?  // Optional - backend response'unda olmayabilir
+    let start: String  // Range başlangıç tarihi (YYYY-MM-DD)
+    let end: String  // Range bitiş tarihi (YYYY-MM-DD)
+    let series: [DeltaMonthlyPoint]  // Aylık delta noktaları (12 ay)
     let summary: DeltaSummary
 }
 

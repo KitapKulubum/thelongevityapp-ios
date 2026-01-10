@@ -29,7 +29,7 @@ struct MainTabView: View {
         let scoreTab = LongevityTrendView()
             .tabItem {
                 Image(systemName: "chart.bar.fill")
-                Text("Score")
+                Text("Age")
             }
             .tag(Tab.score)
         
@@ -804,47 +804,90 @@ struct LongevityTrendView: View {
             )
             .frame(minHeight: 240)
             .padding(.horizontal, screenPadding)
-            .padding(.bottom, sectionSpacing)
-        }
-    }
-    
-    @ViewBuilder
-    private func metricsRow() -> some View {
-        HStack(spacing: 24) {
-            MetricCard(
-                title: "AGING DEBT",
-                value: String(format: "%+.2fy", scoreViewModel.agingDebtYears),
-                isGood: scoreViewModel.agingDebtYears <= 0
-            )
             
-            MetricCard(
-                title: "TODAY Δ",
-                value: String(format: "%+.2fy", scoreViewModel.todayDeltaYears ?? 0),
-                isGood: (scoreViewModel.todayDeltaYears ?? 0) <= 0
-            )
-            
-            Spacer()
-            
-            // Rejuvenation streak from backend - date-based and consecutive
-            // Frontend does NOT calculate this - it comes from backend API
-            if scoreViewModel.rejuvenationStreakDays > 0 {
-                streakBadge()
+            // Check-in metadata (immediately under graph, small gray meta)
+            if let summary = deltaViewModel.dailySummary ?? deltaViewModel.yearlySummary {
+                HStack {
+                    Text("\(summary.checkIns) check-ins this period")
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundColor(.white.opacity(0.35))
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, screenPadding)
+                .padding(.top, 12)
+                .padding(.bottom, sectionSpacing)
+            } else {
+                Spacer()
+                    .frame(height: sectionSpacing)
             }
         }
     }
     
     @ViewBuilder
-    private func streakBadge() -> some View {
+    private func metricsRow() -> some View {
+        // This function appears to be unused (replaced by contextMetricsRow)
+        // Keeping for backward compatibility but using new color logic
+        let agingDebtColorState = colorForBiologicalAge(
+            biologicalAge: scoreViewModel.biologicalAgeYears,
+            chronologicalAge: scoreViewModel.chronologicalAgeYears
+        )
+        
+        let todayDelta = scoreViewModel.todayDeltaYears ?? 0
+        let todayDeltaColorState: BiologicalAgeColorState = {
+            if todayDelta < -0.5 {
+                return .positive
+            } else if abs(todayDelta) <= 0.5 {
+                return .neutral
+            } else {
+                return .attention
+            }
+        }()
+        
+        return HStack(spacing: 24) {
+            MetricCard(
+                title: "AGING DEBT",
+                value: String(format: "%.2fy", abs(scoreViewModel.agingDebtYears)),
+                colorState: agingDebtColorState
+            )
+            
+            MetricCard(
+                title: "TODAY Δ",
+                value: String(format: "%.2fy", abs(todayDelta)),
+                colorState: todayDeltaColorState
+            )
+            
+            Spacer()
+        }
+    }
+    
+    @ViewBuilder
+    private func streakSection() -> some View {
         // Streak value from backend - date-based and consecutive (not calculated locally)
-        HStack(spacing: 6) {
+        HStack {
+            Spacer()
+            
+            HStack(spacing: 8) {
             Text("🔥")
+                    .font(.system(size: 16))
             Text("\(scoreViewModel.rejuvenationStreakDays) DAY STREAK")
-                .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
+                    .kerning(0.5)
         }
         .foregroundColor(.white)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Capsule().fill(Color.white.opacity(0.08)))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(0.08))
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+            )
+            
+            Spacer()
+        }
     }
     
     @ViewBuilder
@@ -866,19 +909,22 @@ struct LongevityTrendView: View {
     }
     
     @ViewBuilder
-    private func headerRow(diff: Double, isGood: Bool) -> some View {
+    private var headerRowOnly: some View {
         HStack {
             Spacer()
             
-            Text("LONGEVITY AGE & TREND")
-                .font(.system(size: 12, weight: .bold))
+            Text("LONGEVITY AGE")
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.white.opacity(0.6))
                 .kerning(1.5)
             
             Spacer()
-            
-            statusChip(diff: diff, isGood: isGood)
         }
+    }
+    
+    @ViewBuilder
+    private func headerRow(diff: Double, isGood: Bool) -> some View {
+        headerRowOnly
     }
     
     @ViewBuilder
@@ -889,28 +935,28 @@ struct LongevityTrendView: View {
         
         let chipColor: Color = {
             if trendValue < 0 {
-                return .green
+                    return .green
             } else if trendValue > 0 {
-                return .orange
-            } else {
-                return .white.opacity(0.6)
+                    return .orange
+                } else {
+                    return .white.opacity(0.6)
             }
         }()
         
         let chipIcon: String = {
             if trendValue < 0 {
-                return "✨"
+                    return "✨"
             } else if trendValue > 0 {
-                return "↗"
-            } else {
-                return "—"
+                    return "↗"
+                } else {
+                    return "—"
             }
         }()
         
         HStack(spacing: 6) {
             Text(chipIcon)
-            Text(String(format: "%@: %+.2fy", trendLabel, trendValue))
-                .font(.system(size: 11, weight: .bold))
+            Text(String(format: "%@: %.2fy", trendLabel, abs(trendValue)))
+                    .font(.system(size: 11, weight: .bold))
         }
         .foregroundColor(chipColor)
         .padding(.horizontal, 14)
@@ -986,56 +1032,201 @@ struct LongevityTrendView: View {
     private func scrollViewContent(header: some View) -> some View {
         ScrollView {
             VStack(spacing: 0) {
-                // 1. Header Row
-                header
+                // 1. Header Row (title only, no status chip)
+                headerRowOnly
                 .padding(.horizontal, screenPadding)
                 .padding(.top, 16)
-                .padding(.bottom, 32)
+                .padding(.bottom, 40)
                 
-                // 2. Main Stats Block (Chronological & Biological)
-                mainStatsBlock
+                // 2. Hero Section - Biological Age (dominant, centered)
+                heroBiologicalAge
                 .padding(.horizontal, screenPadding)
-                .padding(.bottom, sectionSpacing)
+                .padding(.bottom, 28)
                 
-                // 3. Time Range Segmented Control
+                // 3. Context Row (Aging Debt / Today Δ) - subtle
+                contextMetricsRow()
+                .padding(.horizontal, screenPadding)
+                .padding(.bottom, 36)
+                
+                // 4. Streak (calm reward, higher up)
+                if scoreViewModel.rejuvenationStreakDays > 0 {
+                    calmStreakSection()
+                        .padding(.horizontal, screenPadding)
+                        .padding(.bottom, 32)
+                }
+                
+                // 5. Time Range Selector (above graph, closer to hero)
                 timeRangeControl
                 .padding(.horizontal, screenPadding)
-                .padding(.bottom, sectionSpacing)
+                .padding(.bottom, 28)
                 
-                // 4. Trend Graph Area with empty-state handling
+                // 6. Trend Graph Area (main visual) + check-in metadata
                 trendSection()
                 
-                // 5. Metrics Row (Aging Debt / Today Δ)
-                metricsRow()
+                // 8. Microcopy (bottom)
+                microcopySection
                 .padding(.horizontal, screenPadding)
-                .padding(.bottom, sectionSpacing)
-                
-                // 6. Share Insights Row
-                shareRow()
-                .padding(.horizontal, screenPadding)
+                .padding(.top, 12)
                 .padding(.bottom, 100) // Extra padding to avoid TabBar overlap
             }
         }
     }
     
+    // MARK: - Hero Biological Age Section
     @ViewBuilder
-    private var mainStatsBlock: some View {
-        HStack(spacing: 24) {
-            StatColumn(
-                value: scoreViewModel.chronologicalAgeYears,
-                label: "CHRONOLOGICAL",
-                color: .white.opacity(0.4),
-                labelColor: .white.opacity(0.3)
+    private var heroBiologicalAge: some View {
+        let diff = scoreViewModel.biologicalAgeYears - scoreViewModel.chronologicalAgeYears
+        let colorState = colorForBiologicalAge(
+            biologicalAge: scoreViewModel.biologicalAgeYears,
+            chronologicalAge: scoreViewModel.chronologicalAgeYears
+        )
+        let trendValue: Double = abs(diff)
+        
+        VStack(spacing: 20) {
+            // Biological Age - Hero (dominant, centered)
+            VStack(spacing: 6) {
+                Text(String(format: "%.2f", scoreViewModel.biologicalAgeYears))
+                    .font(.system(size: 72, weight: .semibold, design: .rounded))
+                    .foregroundColor(colorState.color)
+                
+                Text("BIOLOGICAL")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(colorState.color.opacity(0.65))
+                    .kerning(1.2)
+            }
+            
+            // Rejuvenation insight (inline, under Biological Age) - optik hizalama
+            if diff < -0.5 && trendValue > 0 {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("✨")
+                        .font(.system(size: 12))
+                        .opacity(0.7)
+                        .baselineOffset(-1)
+                    Text("\(String(format: "%.2f", trendValue)) years younger than your chronological age")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.white.opacity(0.6))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 2)
+            } else if diff > 0.5 && trendValue > 0 {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("↗")
+                        .font(.system(size: 12))
+                        .opacity(0.7)
+                        .baselineOffset(-1)
+                    Text("\(String(format: "%.2f", trendValue)) years older than your chronological age")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 2)
+            } else if abs(diff) <= 0.5 {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("•")
+                        .font(.system(size: 12))
+                        .opacity(0.7)
+                        .baselineOffset(-1)
+                    Text("Aligned with your chronological age")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 2)
+            }
+            
+            // Chronological Age - Secondary reference (smaller, lower contrast)
+            VStack(spacing: 3) {
+                Text(String(format: "%.2f", scoreViewModel.chronologicalAgeYears))
+                    .font(.system(size: 24, weight: .regular, design: .rounded))
+                    .foregroundColor(.white.opacity(0.25))
+                
+                Text("Chronological")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundColor(.white.opacity(0.25))
+                    .kerning(0.5)
+            }
+            .padding(.top, 12)
+        }
+    }
+    
+    // MARK: - Context Metrics Row (subtle, below hero)
+    @ViewBuilder
+    private func contextMetricsRow() -> some View {
+        // Calculate color states based on aging debt and today delta
+        // Aging debt = biologicalAge - chronologicalAge (same as diff)
+        let agingDebtColorState = colorForBiologicalAge(
+            biologicalAge: scoreViewModel.biologicalAgeYears,
+            chronologicalAge: scoreViewModel.chronologicalAgeYears
+        )
+        
+        // Today delta: negative = rejuvenation, positive = aging, near zero = neutral
+        let todayDelta = scoreViewModel.todayDeltaYears ?? 0
+        let todayDeltaColorState: BiologicalAgeColorState = {
+            if todayDelta < -0.5 {
+                return .positive
+            } else if abs(todayDelta) <= 0.5 {
+                return .neutral
+            } else {
+                return .attention
+            }
+        }()
+        
+        return HStack(spacing: 32) {
+            MetricCard(
+                title: "AGING DEBT",
+                value: String(format: "%.2fy", abs(scoreViewModel.agingDebtYears)),
+                colorState: agingDebtColorState
             )
             
-            StatColumn(
-                value: scoreViewModel.biologicalAgeYears,
-                label: "BIOLOGICAL",
-                color: .green,
-                labelColor: .green.opacity(0.6),
-                hasGlow: true
+            MetricCard(
+                title: "TODAY Δ",
+                value: String(format: "%.2fy", abs(todayDelta)),
+                colorState: todayDeltaColorState
             )
+            
+            Spacer()
         }
+    }
+    
+    // MARK: - Calm Streak Section (reward style, not CTA)
+    @ViewBuilder
+    private func calmStreakSection() -> some View {
+        HStack {
+            Spacer()
+            
+            HStack(spacing: 8) {
+                Text("🔥")
+                    .font(.system(size: 13))
+                    .opacity(0.7)
+                Text("\(scoreViewModel.rejuvenationStreakDays) day consistency streak")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(0.04))
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                    )
+            )
+            
+            Spacer()
+        }
+    }
+    
+    
+    // MARK: - Microcopy Section
+    @ViewBuilder
+    private var microcopySection: some View {
+        Text("How your lifestyle affects your biological age over time")
+            .font(.system(size: 11, weight: .regular))
+            .foregroundColor(.white.opacity(0.35))
+            .multilineTextAlignment(.center)
+            .lineSpacing(4)
+            .frame(maxWidth: .infinity)
     }
     
     @ViewBuilder
@@ -1048,13 +1239,13 @@ struct LongevityTrendView: View {
                     deltaViewModel.loadData(range: range.rawValue)
                 }) {
                     Text(range.rawValue.uppercased())
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(selectedRange == range ? .black : .white.opacity(0.6))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(selectedRange == range ? .black : .white.opacity(0.5))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(
                             Capsule()
-                                .fill(selectedRange == range ? Color.green : Color.clear)
+                                .fill(selectedRange == range ? Color.green.opacity(0.9) : Color.clear)
                         )
                 }
             }
@@ -1071,6 +1262,41 @@ struct LongevityTrendView: View {
         Task {
             await scoreViewModel.fetchSummary()
         }
+    }
+}
+
+// MARK: - Color Logic Helper
+
+/// Determines color for biological age indicators based on the difference from chronological age
+/// - Green: biologicalAge < chronologicalAge - 0.5 (positive rejuvenation)
+/// - Gray: abs(diff) <= 0.5 (aligned state)
+/// - Amber: biologicalAge > chronologicalAge + 0.5 (attention state, not red)
+enum BiologicalAgeColorState {
+    case positive    // Green - rejuvenation
+    case neutral     // Gray - aligned
+    case attention   // Amber/Orange - needs attention
+    
+    var color: Color {
+        switch self {
+        case .positive:
+            return .green
+        case .neutral:
+            return Color(white: 0.6) // Neutral gray
+        case .attention:
+            return Color.orange // Warm amber/orange, not red
+        }
+    }
+}
+
+func colorForBiologicalAge(biologicalAge: Double, chronologicalAge: Double) -> BiologicalAgeColorState {
+    let diff = biologicalAge - chronologicalAge
+    
+    if diff < -0.5 {
+        return .positive
+    } else if abs(diff) <= 0.5 {
+        return .neutral
+    } else {
+        return .attention
     }
 }
 
@@ -1101,7 +1327,7 @@ struct StatColumn: View {
 struct MetricCard: View {
     let title: String
     let value: String
-    let isGood: Bool
+    let colorState: BiologicalAgeColorState
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1112,7 +1338,7 @@ struct MetricCard: View {
             
             Text(value)
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundColor(isGood ? .green : .orange)
+                .foregroundColor(colorState.color)
         }
     }
 }
@@ -1459,111 +1685,83 @@ struct ProfileView: View {
     @StateObject private var authManager = AuthManager.shared
     @State private var showLogoutAlert: Bool = false
     @State private var isLoggingOut: Bool = false
+    @State private var showDeleteAccountAlert: Bool = false
+    @State private var isDeletingAccount: Bool = false
+    @State private var selectedLanguage: String = "English"
+    @State private var showTerms: Bool = false
+    @State private var showPrivacy: Bool = false
+    @State private var contentOffset: CGFloat = 0
+    @State private var isDeletePressed: Bool = false
+    
+    private let availableLanguages = ["English", "Türkçe", "Español", "Français", "Deutsch"]
+    private let cardSpacing: CGFloat = 24
+    private let cardPadding: CGFloat = 20
+    
+    private var displayName: String {
+        if let firstName = appState.userFirstName, let lastName = appState.userLastName {
+            return "\(firstName) \(lastName)"
+        } else if let firstName = appState.userFirstName {
+            return firstName
+        } else if let lastName = appState.userLastName {
+            return lastName
+        } else {
+            return ""
+        }
+    }
     
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             
-            // Subtle background glow
-            ZStack {
-                Circle()
-                    .fill(RadialGradient(colors: [Color.green.opacity(0.03), Color.clear], center: .center, startRadius: 50, endRadius: 200))
-                    .frame(width: 400, height: 400)
-                    .blur(radius: 50)
-                    .offset(x: 0, y: -100)
-            }
-            
             ScrollView {
                 VStack(spacing: 0) {
-                    // Top Nav Bar
-                    HStack {
-                        Spacer()
-                        
-                        Text("PROFILE & SETTINGS")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white.opacity(0.6))
-                            .kerning(1.5)
-                        
-                        Spacer()
-                        
-                        Button(action: {}) {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.white)
-                                .padding(12)
-                                .background(Circle().fill(Color.white.opacity(0.05)))
+                    // Page Header (Score screen style)
+                    VStack(spacing: 12) {
+                        HStack {
+                            Spacer()
+                            
+                            Text("PROFILE")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.6))
+                                .kerning(1.5)
+                            
+                            Spacer()
                         }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 20)
-                    .padding(.bottom, 30)
-                    
-                    // Header Block
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 8) {
+                        
+                        // User name
+                        if !displayName.isEmpty {
                             Text(displayName)
-                                .font(.system(size: 36, weight: .bold))
+                                .font(.system(size: 24, weight: .semibold))
                                 .foregroundColor(.white)
-                            
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(Color.green)
-                                    .frame(width: 8, height: 8)
-                                    .shadow(color: .green, radius: 4)
-                                
-                                Text("AI Coach Active")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.green)
-                                    .kerning(1)
-                            }
+                                .kerning(-0.3)
                         }
-                        
-            Spacer()
-                        
-                        Button(action: {}) {
-                            ZStack {
-                                Circle()
-                                    .stroke(Color.green.opacity(0.3), lineWidth: 2)
-                                    .frame(width: 60, height: 60)
-                                
-                                Image(systemName: "brain.head.profile")
-                                    .font(.system(size: 24))
-                    .foregroundColor(.green)
-            }
-        }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 40)
+                    .padding(.horizontal, cardPadding)
+                    .padding(.top, 16)
+                    .padding(.bottom, 32)
                     
-                    // Logout Button
-                    Button(action: {
-                        showLogoutAlert = true
-                    }) {
-                        HStack(spacing: 12) {
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                                .font(.system(size: 16, weight: .semibold))
-                            
-                            Text("LOGOUT")
-                                .font(.system(size: 14, weight: .bold))
-                                .kerning(1)
-                        }
-                        .foregroundColor(.red.opacity(0.9))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(Color.red.opacity(0.1))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(Color.red.opacity(0.3), lineWidth: 1)
-                                )
-                        )
-                    }
-                    .disabled(isLoggingOut)
-                    .opacity(isLoggingOut ? 0.6 : 1)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 40)
+                    // Membership Card (Primary)
+                    membershipCard
+                        .padding(.horizontal, cardPadding)
+                        .padding(.bottom, cardSpacing)
+                    
+                    // Language Card (Secondary)
+                    languageCard
+                        .padding(.horizontal, cardPadding)
+                        .padding(.bottom, cardSpacing)
+                    
+                    // Legal Section (Low emphasis)
+                    legalSection
+                        .padding(.horizontal, cardPadding)
+                        .padding(.bottom, cardSpacing * 2)
+                    
+                    // Account Actions (Bottom, de-emphasized)
+                    accountActions
+                        .padding(.horizontal, cardPadding)
+                        .padding(.bottom, 60)
                 }
+                .opacity(contentOffset > 0 ? 1 : 0)
+                .offset(y: contentOffset > 0 ? 0 : 20)
             }
         }
         .alert("Logout", isPresented: $showLogoutAlert) {
@@ -1574,19 +1772,201 @@ struct ProfileView: View {
                 }
             }
         } message: {
-            Text("Are you sure you want to logout?")
+            Text("You will need to sign in again to access your account.")
+        }
+        .alert("Delete account?", isPresented: $showDeleteAccountAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                Task {
+                    await handleDeleteAccount()
+                }
+            }
+        } message: {
+            Text("This will permanently delete your data and cannot be undone.")
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.6)) {
+                contentOffset = 1
+            }
+        }
+        .sheet(isPresented: $showTerms) {
+            TermsOfServiceView()
+        }
+        .sheet(isPresented: $showPrivacy) {
+            PrivacyPolicyView()
         }
     }
     
-    private var displayName: String {
-        if let firstName = appState.userFirstName, let lastName = appState.userLastName {
-            return "\(firstName) \(lastName)"
-        } else if let firstName = appState.userFirstName {
-            return firstName
-        } else if let lastName = appState.userLastName {
-            return lastName
-        } else {
-            return "User"
+    // MARK: - Membership Card (Primary, visually dominant)
+    private var membershipCard: some View {
+        Button(action: {
+            let impact = UIImpactFeedbackGenerator(style: .light)
+            impact.impactOccurred()
+            openAppleSubscriptions()
+        }) {
+            MinimalCard(elevated: true) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Membership")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(.white)
+                            
+                            Text("Monthly membership")
+                                .font(.system(size: 14, weight: .regular))
+                                .foregroundColor(.white.opacity(0.6))
+                            
+                            Text("Managed via Apple Subscriptions")
+                                .font(.system(size: 12, weight: .regular))
+                                .foregroundColor(.white.opacity(0.4))
+                        }
+                        
+            Spacer()
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+                    
+                    HStack(spacing: 6) {
+                        Text("Open Subscriptions")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(24)
+            }
+        }
+        .buttonStyle(MinimalButtonStyle())
+    }
+    
+    private func openAppleSubscriptions() {
+        if let url = URL(string: "itms-apps://apps.apple.com/account/subscriptions") {
+            UIApplication.shared.open(url)
+        }
+    }
+    
+    // MARK: - Language Card (Secondary)
+    private var languageCard: some View {
+        Menu {
+            ForEach(availableLanguages, id: \.self) { language in
+                    Button(action: {
+                    selectedLanguage = language
+                }) {
+                    HStack {
+                        Text(language)
+                        if selectedLanguage == language {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            MinimalCard {
+                HStack(spacing: 16) {
+                    Image(systemName: "globe")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
+                        .frame(width: 20)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Language")
+                                .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                        
+                        Text(selectedLanguage)
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.3))
+                }
+                .padding(20)
+            }
+        }
+    }
+    
+    // MARK: - Legal Section (Low emphasis)
+    private var legalSection: some View {
+        MinimalCard {
+            VStack(spacing: 0) {
+                Button(action: { showTerms = true }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.white.opacity(0.3))
+                            .frame(width: 16)
+                        
+                        Text("Terms of Service")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.white.opacity(0.5))
+                        
+                        Spacer()
+                    }
+                    .padding(.vertical, 14)
+                }
+                
+                Divider()
+                    .background(Color.white.opacity(0.1))
+                    .padding(.leading, 28)
+                
+                Button(action: { showPrivacy = true }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "lock.shield")
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.white.opacity(0.3))
+                            .frame(width: 16)
+                        
+                        Text("Privacy Policy")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.white.opacity(0.5))
+                        
+                        Spacer()
+                    }
+                    .padding(.vertical, 14)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+    
+    // MARK: - Account Actions (Bottom, de-emphasized)
+    private var accountActions: some View {
+        VStack(spacing: 20) {
+            // Log out (neutral text button)
+            Button(action: {
+                let impact = UIImpactFeedbackGenerator(style: .light)
+                impact.impactOccurred()
+                showLogoutAlert = true
+            }) {
+                Text("Log out")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            
+            // Delete account (small text button, red only on interaction)
+            Button(action: {
+                showDeleteAccountAlert = true
+            }) {
+                Text("Delete account")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(isDeletePressed ? .red.opacity(0.8) : .white.opacity(0.4))
+            }
+            .onLongPressGesture(minimumDuration: 0) { pressing in
+                isDeletePressed = pressing
+                if pressing {
+                    let impact = UIImpactFeedbackGenerator(style: .light)
+                    impact.impactOccurred()
+                }
+            } perform: {}
         }
     }
     
@@ -1615,6 +1995,550 @@ struct ProfileView: View {
         }
     }
     
+    private func handleDeleteAccount() async {
+        isDeletingAccount = true
+        // TODO: Implement delete account API call
+        // For now, just show a placeholder
+        // Call backend delete account endpoint when available
+        // try await APIClient.shared.deleteAccount()
+        print("[ProfileView] Delete account requested")
+        
+        // After successful deletion, logout
+        await handleLogout()
+        
+        await MainActor.run {
+            isDeletingAccount = false
+        }
+    }
+}
+
+// MARK: - AI Coach Indicator
+struct AICoachIndicator: View {
+    @State private var pulseScale: CGFloat = 1.0
+    @State private var ringOpacity: Double = 0.3
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                // Outer pulsing ring
+                Circle()
+                    .stroke(Color.green.opacity(ringOpacity), lineWidth: 2)
+                    .frame(width: 12, height: 12)
+                    .scaleEffect(pulseScale)
+                
+                // Inner dot
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+                    .shadow(color: .green.opacity(0.6), radius: 4)
+            }
+            
+            Text("AI Coach • Active")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.green.opacity(0.8))
+                .kerning(0.5)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                pulseScale = 1.3
+                ringOpacity = 0.1
+            }
+        }
+    }
+}
+
+// MARK: - Minimal Profile Icon
+struct MinimalProfileIcon: View {
+    @State private var breathingScale: CGFloat = 1.0
+    
+    var body: some View {
+        ZStack {
+            // Soft glow/halo background
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [Color.green.opacity(0.1), Color.green.opacity(0.0)],
+                        center: .center,
+                        startRadius: 15,
+                        endRadius: 35
+                    )
+                )
+                .frame(width: 70, height: 70)
+                .blur(radius: 6)
+            
+            // Thin ring with subtle glow
+            Circle()
+                .stroke(Color.white.opacity(0.15), lineWidth: 1.5)
+                .frame(width: 60, height: 60)
+                .shadow(color: Color.green.opacity(0.2), radius: 8)
+            
+            // Inner circle
+            Circle()
+                .fill(Color.white.opacity(0.05))
+                .frame(width: 56, height: 56)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+            
+            // App Icon (circular)
+            Image("ikon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 44, height: 44)
+                .clipShape(Circle())
+        }
+        .scaleEffect(breathingScale)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 3.0).repeatForever(autoreverses: true)) {
+                breathingScale = 1.02
+            }
+        }
+    }
+}
+
+// MARK: - AI Coach Status Row
+struct AICoachStatusRow: View {
+    @State private var pulseScale: CGFloat = 1.0
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            // Tiny pulsing dot
+            ZStack {
+                Circle()
+                    .fill(Color.green.opacity(0.3))
+                    .frame(width: 8, height: 8)
+                    .scaleEffect(pulseScale)
+                
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+            }
+            
+            Text("AI Coach • Active")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.white.opacity(0.6))
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                pulseScale = 1.3
+            }
+        }
+    }
+}
+
+// MARK: - Minimal Card Component
+struct MinimalCard<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    var elevated: Bool = false
+    
+    init(elevated: Bool = false, @ViewBuilder content: @escaping () -> Content) {
+        self.elevated = elevated
+        self.content = content
+    }
+    
+    var body: some View {
+        content()
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.05),
+                                Color.white.opacity(0.03)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.1),
+                                        Color.white.opacity(0.03)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+                    .shadow(
+                        color: elevated ? Color.black.opacity(0.3) : Color.black.opacity(0.2),
+                        radius: elevated ? 16 : 8,
+                        x: 0,
+                        y: elevated ? 8 : 4
+                    )
+            )
+    }
+}
+
+// MARK: - Minimal Button Style
+struct MinimalButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { oldValue, newValue in
+                if newValue && !oldValue {
+                    let impact = UIImpactFeedbackGenerator(style: .light)
+                    impact.impactOccurred()
+                }
+            }
+    }
+}
+
+// MARK: - Terms of Service View
+struct TermsOfServiceView: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text("Terms of Service")
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.bottom, 8)
+                        
+                        Text("Last updated: December 2025")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(.white.opacity(0.5))
+                        
+                        Text("Please read these terms of service carefully before using our application.")
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(.top, 8)
+                        
+                        // Add your terms content here
+                        Text("1. Acceptance of Terms\n\nBy accessing and using this application, you accept and agree to be bound by the terms and provision of this agreement.")
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(.top, 16)
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Terms of Service")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .foregroundColor(.green)
+                }
+            }
+            .preferredColorScheme(.dark)
+        }
+    }
+}
+
+// MARK: - Privacy Policy View
+struct PrivacyPolicyView: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text("Privacy Policy")
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.bottom, 8)
+                        
+                        Text("Last updated: December 2025")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(.white.opacity(0.5))
+                        
+                        Text("We are committed to protecting your privacy. This policy explains how we collect, use, and safeguard your information.")
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(.top, 8)
+                        
+                        // Add your privacy policy content here
+                        Text("1. Information We Collect\n\nWe collect information that you provide directly to us, including your name, email address, and health metrics.")
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(.top, 16)
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Privacy Policy")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .foregroundColor(.green)
+                }
+            }
+            .preferredColorScheme(.dark)
+        }
+    }
+}
+
+// MARK: - Refer View
+struct ReferView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var referralCode: String = "LONGEVITY2025"
+    @State private var copiedToClipboard: Bool = false
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Header
+                        VStack(spacing: 12) {
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 48))
+                                .foregroundColor(.green)
+                            
+                            Text("Refer Friends")
+                                .font(.system(size: 24, weight: .bold))
+                                .foregroundColor(.white)
+                            
+                            Text("Share Longevity AI with friends and earn rewards")
+                                .font(.system(size: 14, weight: .regular))
+                                .foregroundColor(.white.opacity(0.6))
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.top, 40)
+                        .padding(.bottom, 20)
+                        
+                        // Referral Code
+                        VStack(spacing: 12) {
+                            Text("YOUR REFERRAL CODE")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white.opacity(0.3))
+                                .kerning(1)
+                            
+                            HStack(spacing: 12) {
+                                Text(referralCode)
+                                    .font(.system(size: 20, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.green)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 16)
+                                    .frame(maxWidth: .infinity)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Color.green.opacity(0.1))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                                            )
+                                    )
+                                
+                                Button(action: {
+                                    UIPasteboard.general.string = referralCode
+                                    copiedToClipboard = true
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                        copiedToClipboard = false
+                                    }
+                                }) {
+                                    Image(systemName: copiedToClipboard ? "checkmark" : "doc.on.doc")
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundColor(.green)
+                                        .frame(width: 50, height: 50)
+                                        .background(
+                                            Circle()
+                                                .fill(Color.green.opacity(0.1))
+                                                .overlay(
+                                                    Circle()
+                                                        .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                                                )
+                                        )
+                                }
+                            }
+                            
+                            if copiedToClipboard {
+                                Text("Copied to clipboard!")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.green)
+                            }
+                        }
+                        .padding(20)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.white.opacity(0.05))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
+                        )
+                        
+                        // Share Buttons
+                        VStack(spacing: 12) {
+                            Button(action: {
+                                // Share via system share sheet
+                                shareReferralCode()
+                            }) {
+                                HStack {
+                                    Image(systemName: "square.and.arrow.up")
+                                    Text("Share Referral Code")
+                                        .font(.system(size: 14, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color.green.opacity(0.2))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .stroke(Color.green.opacity(0.4), lineWidth: 1)
+                                        )
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Refer Friends")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .foregroundColor(.green)
+                }
+            }
+            .preferredColorScheme(.dark)
+        }
+    }
+    
+    private func shareReferralCode() {
+        let text = "Join me on Longevity AI! Use my referral code: \(referralCode)"
+        let activityVC = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController {
+            rootViewController.present(activityVC, animated: true)
+        }
+    }
+}
+
+// MARK: - Subscription View
+struct SubscriptionView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedPlan: String = "premium"
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Header
+                        VStack(spacing: 12) {
+                            Image(systemName: "crown.fill")
+                                .font(.system(size: 48))
+                                .foregroundColor(.yellow)
+                            
+                            Text("Premium Subscription")
+                                .font(.system(size: 24, weight: .bold))
+                                .foregroundColor(.white)
+                            
+                            Text("Unlock all features and maximize your longevity journey")
+                                .font(.system(size: 14, weight: .regular))
+                                .foregroundColor(.white.opacity(0.6))
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.top, 40)
+                        .padding(.bottom, 20)
+                        
+                        // Features List
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("PREMIUM FEATURES")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white.opacity(0.3))
+                                .kerning(1)
+                            
+                            VStack(alignment: .leading, spacing: 12) {
+                                featureRow(icon: "sparkles", text: "Advanced AI Coaching")
+                                featureRow(icon: "chart.line.uptrend.xyaxis", text: "Detailed Analytics")
+                                featureRow(icon: "bell.badge.fill", text: "Priority Support")
+                                featureRow(icon: "lock.open.fill", text: "Unlimited Check-ins")
+                            }
+                        }
+                        .padding(20)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.white.opacity(0.05))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
+                        )
+                        
+                        // Subscribe Button
+                        Button(action: {
+                            // Handle subscription purchase
+                            print("Subscribe to premium")
+                        }) {
+                            HStack {
+                                Text("Subscribe to Premium")
+                                    .font(.system(size: 16, weight: .bold))
+                            }
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.green)
+                            )
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Subscription")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .foregroundColor(.green)
+                }
+            }
+            .preferredColorScheme(.dark)
+        }
+    }
+    
+    @ViewBuilder
+    private func featureRow(icon: String, text: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.green)
+                .frame(width: 24)
+            
+            Text(text)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(.white.opacity(0.8))
+            
+            Spacer()
+        }
+    }
 }
 
 // MARK: - Supporting Types and Views
@@ -1986,13 +2910,6 @@ struct DeltaChartView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Mini Summary (inside chart container)
-            if let summary = viewModel.dailySummary ?? viewModel.yearlySummary {
-                DeltaSummaryView(summary: summary)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-            }
-            
             // Chart Area
             if viewModel.isLoading {
                 DeltaChartLoadingView()
@@ -2011,67 +2928,6 @@ struct DeltaChartView: View {
     }
 }
 
-// MARK: - Mini Summary View
-
-struct DeltaSummaryView: View {
-    let summary: DeltaSummary
-    
-    var body: some View {
-        HStack(spacing: 16) {
-            // Net Delta (Baseline dahil toplam)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Net Delta")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
-                Text(formatDelta(summary.netDeltaYears))
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(summary.netDeltaYears >= 0 ? .green : .red)
-            }
-            
-            Spacer()
-            
-            // Rejuvenation
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Rejuvenation")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
-                Text(formatDelta(summary.rejuvenationYears))
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.green)
-            }
-            
-            Spacer()
-            
-            // Aging
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Aging")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
-                Text(formatDelta(summary.agingYears))
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.red)
-            }
-            
-            Spacer()
-            
-            // Check-ins
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Check-ins")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
-                Text("\(summary.checkIns)")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.white.opacity(0.9))
-            }
-        }
-        .padding(.vertical, 8)
-    }
-    
-    private func formatDelta(_ value: Double) -> String {
-        let sign = value >= 0 ? "+" : ""
-        return String(format: "\(sign)%.2f", value)
-    }
-}
 
 // MARK: - Daily Chart View (Weekly/Monthly)
 
@@ -2088,29 +2944,50 @@ struct DailyDeltaChartView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Chart {
-                ForEach(points, id: \.date) { point in
+                let firstValidIndex = points.firstIndex { $0.dailyDeltaYears != nil }
+                
+                ForEach(Array(points.enumerated()), id: \.element.date) { index, point in
                     if let dailyDeltaYears = point.dailyDeltaYears {
+                        let isFirstAttentionPoint = dailyDeltaYears > 0.5 && index == firstValidIndex
+                        
+                        // Determine color based on delta value (daily change, not absolute age comparison)
+                        // Negative delta = rejuvenation, Positive delta = aging
+                        let deltaColorState: BiologicalAgeColorState = {
+                            if dailyDeltaYears < -0.5 {
+                                return .positive // Significant rejuvenation
+                            } else if abs(dailyDeltaYears) <= 0.5 {
+                                return .neutral // Minimal change
+                            } else {
+                                return .attention // Significant aging (amber, not red)
+                            }
+                        }()
+                        
+                        let lineColor = deltaColorState.color.opacity(0.7)
+                        let pointColor = deltaColorState == .attention && isFirstAttentionPoint 
+                            ? deltaColorState.color.opacity(0.5) 
+                            : deltaColorState.color.opacity(0.6)
+                        
                         LineMark(
                             x: .value("Date", parseDate(point.date)),
                             y: .value("Delta", dailyDeltaYears)
                         )
-                        .foregroundStyle(dailyDeltaYears >= 0 ? .green : .red)
+                        .foregroundStyle(lineColor)
                         .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
                         
                         PointMark(
                             x: .value("Date", parseDate(point.date)),
                             y: .value("Delta", dailyDeltaYears)
                         )
-                        .foregroundStyle(dailyDeltaYears >= 0 ? .green : .red)
-                        .symbolSize(40)
+                        .foregroundStyle(pointColor)
+                        .symbolSize(36)
                     }
                     // If dailyDeltaYears is nil, no mark is drawn (creates gap)
                 }
                 
-                // Zero line
+                // Zero line (subtle)
                 RuleMark(y: .value("Zero", 0))
-                    .foregroundStyle(.white.opacity(0.3))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                    .foregroundStyle(.white.opacity(0.15))
+                    .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
             }
             .chartXAxis {
                 AxisMarks(values: .automatic) { value in
@@ -2163,18 +3040,29 @@ struct YearlyDeltaChartView: View {
         } else {
             Chart {
                 ForEach(points, id: \.month) { point in
+                    // Determine color based on net delta value
+                    let deltaColorState: BiologicalAgeColorState = {
+                        if point.netDelta < -0.5 {
+                            return .positive
+                        } else if abs(point.netDelta) <= 0.5 {
+                            return .neutral
+                        } else {
+                            return .attention
+                        }
+                    }()
+                    
                     BarMark(
                         x: .value("Month", parseMonth(point.month)),
                         y: .value("Net Delta", point.netDelta)
                     )
-                    .foregroundStyle(point.netDelta >= 0 ? .green : .red)
+                    .foregroundStyle(deltaColorState.color.opacity(0.7))
                     .cornerRadius(4)
                 }
                 
-                // Zero line
+                // Zero line (subtle)
                 RuleMark(y: .value("Zero", 0))
-                    .foregroundStyle(.white.opacity(0.3))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                    .foregroundStyle(.white.opacity(0.15))
+                    .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
             }
             .chartXAxis {
                 AxisMarks(values: .automatic) { value in

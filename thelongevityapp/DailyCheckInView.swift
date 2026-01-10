@@ -264,8 +264,18 @@ struct DailyCheckInView: View {
                                 .font(.headline)
 
                             Text(String(format: "Aging Debt: %.2f years", debt))
-                                .foregroundColor(debt > 0 ? .red : .green)
-                            
+                                .foregroundColor({
+                                    // Apply same color logic as MainTabView
+                                    // debt is already the difference (biologicalAge - chronologicalAge)
+                                    if debt < -0.5 {
+                                        return .green // Positive rejuvenation
+                                    } else if abs(debt) <= 0.5 {
+                                        return Color(white: 0.6) // Neutral gray
+                                    } else {
+                                        return .orange // Amber/orange (attention, not red)
+                                    }
+                                }())
+
                             // Rejuvenation Streak (from backend - date-based, consecutive)
                             if let streak = rejuvenationStreak, streak > 0 {
                                 HStack(spacing: 8) {
@@ -364,8 +374,8 @@ struct DailyCheckInView: View {
                         self.alertMessage = "You have already completed today's check-in. Please try again tomorrow."
                         self.showAlert = true
                     } else {
-                        self.alertMessage = "Network error: \(error.localizedDescription)"
-                        self.showAlert = true
+                    self.alertMessage = "Network error: \(error.localizedDescription)"
+                    self.showAlert = true
                     }
                 } else {
                     // Success - refresh all insights data

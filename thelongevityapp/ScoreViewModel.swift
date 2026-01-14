@@ -50,6 +50,7 @@ final class ScoreViewModel: ObservableObject {
     }
     
     func apply(_ summary: StatsSummaryResponse) {
+        let oldDelta = todayDeltaYears
         print("[ScoreViewModel] Applying summary - userId: \(summary.userId), biologicalAge: \(summary.state.currentBiologicalAgeYears ?? summary.state.chronologicalAgeYears), agingDebt: \(summary.state.agingDebtYears)")
         // Chronological age is fixed, sourced from backend only.
         chronologicalAgeYears = summary.state.chronologicalAgeYears
@@ -64,6 +65,10 @@ final class ScoreViewModel: ObservableObject {
         
         todayScore = summary.today?.score
         todayDeltaYears = summary.today?.deltaYears
+        
+        if let newDelta = todayDeltaYears, newDelta != oldDelta {
+            print("[ScoreViewModel] Today's delta updated: \(oldDelta?.description ?? "nil") -> \(newDelta)")
+        }
         
         weeklyHistory = summary.weeklyHistory
         monthlyHistory = summary.monthlyHistory

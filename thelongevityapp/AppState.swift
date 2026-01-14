@@ -22,6 +22,23 @@ class AppState: ObservableObject {
     @Published var summary: StatsSummaryResponse?
     @Published var activeTab: Tab = .chat
     
+    // Summary update trigger - increments on every summary update to ensure onChange fires
+    @Published var summaryUpdateTrigger: Int = 0
+    
+    // Subscription status
+    @Published var subscriptionStatus: SubscriptionStatus = .unknown
+    
+    enum SubscriptionStatus {
+        case active
+        case expired
+        case inactive
+        case unknown
+        
+        var isActive: Bool {
+            return self == .active
+        }
+    }
+    
     // User profile info
     @Published var userFirstName: String?
     @Published var userLastName: String?
@@ -155,6 +172,10 @@ class AppState: ObservableObject {
         // This never throws - timeout/network errors are handled gracefully
         await syncTimezoneIfNeeded()
         
+        // Load subscription status from /api/auth/me
+        // For now, set all users to active by default (will be fixed before prod)
+        subscriptionStatus = .active
+        
         // Fetch fresh summary from backend (requires auth token)
         do {
             let freshSummary = try await APIClient.shared.getSummary()
@@ -223,6 +244,9 @@ class AppState: ObservableObject {
     }
     
     func updateSummary(_ newSummary: StatsSummaryResponse) {
+        let oldTodayDelta = summary?.today?.deltaYears
+        let newTodayDelta = newSummary.today?.deltaYears
+        
         summary = newSummary
         saveCachedSummary(newSummary)
         userId = newSummary.userId
@@ -230,7 +254,12 @@ class AppState: ObservableObject {
         // Update onboarding status from summary (backend is source of truth)
         setOnboardingStatus(newSummary.onboardingStatus)
         
+        // Increment trigger to ensure onChange fires even if summary object reference doesn't change
+        summaryUpdateTrigger += 1
+        
         print("[AppState] Summary updated - userId: \(newSummary.userId), biologicalAge: \(newSummary.state.currentBiologicalAgeYears ?? newSummary.state.chronologicalAgeYears), agingDebt: \(newSummary.state.agingDebtYears), todayScore: \(newSummary.today?.score ?? 0)")
+        print("[AppState] Today's delta: \(oldTodayDelta?.description ?? "nil") -> \(newTodayDelta?.description ?? "nil")")
+        print("[AppState] Summary update trigger: \(summaryUpdateTrigger)")
         print("[AppState] Summary has \(newSummary.weeklyHistory.count) weekly, \(newSummary.monthlyHistory.count) monthly, \(newSummary.yearlyHistory.count) yearly history points")
         print("[AppState] Onboarding status updated from summary: \(newSummary.onboardingStatus)")
     }
@@ -246,6 +275,22 @@ class AppState: ObservableObject {
     var isTodaySubmitted: Bool {
         // Backend is source of truth - if summary.today exists, check-in is completed
         return summary?.today != nil
+    }
+    
+    func updateSubscriptionStatus(from response: AuthProfileResponse) {
+        if let subscription = response.subscription,
+           let status = subscription.status {
+            switch status.lowercased() {
+            case "active":
+                self.subscriptionStatus = .active
+            case "expired":
+                self.subscriptionStatus = .expired
+            default:
+                self.subscriptionStatus = .inactive
+            }
+        } else {
+            self.subscriptionStatus = .inactive
+        }
     }
 }
 

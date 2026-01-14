@@ -109,33 +109,77 @@ final class AgeStore: ObservableObject {
         
         print("[AgeStore] Submitting daily update...")
         
-        let result: Result<AgeStateResponse, Error> = await withCheckedContinuation { continuation in
-            LongevityAPI.shared.submitDailyUpdate(requestBody) { response in
-                continuation.resume(returning: response)
-            }
-        }
-        
-        switch result {
-        case .success(let response):
+        do {
+            // Convert DailyUpdateRequest to DailySubmitRequest (remove date field - backend computes it)
+            let metrics = DailyMetricsPayload(
+                sleepHours: requestBody.metrics.sleepHours,
+                steps: requestBody.metrics.steps,
+                vigorousMinutes: requestBody.metrics.vigorousMinutes,
+                processedFoodScore: requestBody.metrics.processedFoodScore,
+                alcoholUnits: requestBody.metrics.alcoholUnits,
+                stressLevel: requestBody.metrics.stressLevel,
+                lateCaffeine: requestBody.metrics.lateCaffeine,
+                screenLate: requestBody.metrics.screenLate,
+                bedtimeHour: requestBody.metrics.bedtimeHour
+            )
+            
+            let submitRequest = DailySubmitRequest(metrics: metrics)
+            let result = try await APIClient.shared.postDaily(submitRequest)
+            
             print("[AgeStore] Daily update succeeded!")
-            updateFromResponse(response)
+            print("[AgeStore] Streak from backend: \(result.state.rejuvenationStreakDays)")
+            
+            // Update state from DailyResultDTO
+            updateFromDailyResult(result)
+            
+            // Also refresh summary to ensure all data is in sync
+            await loadSummary()
             
             isLoading = false
             print("[AgeStore] Daily update completed successfully")
             
-        case .failure(let error):
+        } catch {
             print("[AgeStore] Daily update failed: \(error)")
             lastError = error
             isLoading = false
         }
     }
     
-    // Helper method to update all properties from response
+    // Helper method to update all properties from DailyResultDTO
     // Note: Streak values come from backend - date-based and consecutive
     // Backend calculates: today = lastCheckInDate + 1 day → streak + 1
     //                     today > lastCheckInDate + 1 day → streak = 1 (reset)
+    func updateFromDailyResult(_ result: DailyResultDTO) {
+        print("[AgeStore] Updating from DailyResultDTO:")
+        print("  - State biological: \(result.state.currentBiologicalAgeYears ?? 0)")
+        print("  - State aging debt: \(result.state.agingDebtYears)")
+        print("  - State rejuvenation streak: \(result.state.rejuvenationStreakDays)")
+        print("  - State acceleration streak: \(result.state.accelerationStreakDays)")
+        
+        // Update state from DailyResultDTO
+        state = result.state
+        today = result.today
+        
+        // Update published properties for UI
+        currentBiologicalAgeYears = result.state.currentBiologicalAgeYears
+        agingDebtYears = result.state.agingDebtYears
+        
+        // Streak values from backend - date-based and consecutive (not calculated locally)
+        rejuvenationStreakDays = result.state.rejuvenationStreakDays
+        accelerationStreakDays = result.state.accelerationStreakDays
+        totalRejuvenationDays = result.state.totalRejuvenationDays
+        totalAccelerationDays = result.state.totalAccelerationDays
+        
+        // Update today's delta and reasons if available
+        if let todayEntry = result.today {
+            todayDeltaYears = todayEntry.deltaYears
+            todayReasons = todayEntry.reasons
+        }
+    }
+    
+    // Legacy method for AgeStateResponse (kept for backward compatibility if needed)
     private func updateFromResponse(_ response: AgeStateResponse) {
-        print("[AgeStore] Updating from response:")
+        print("[AgeStore] Updating from AgeStateResponse (legacy):")
         print("  - Profile chronological: \(response.profile.chronologicalAgeYears)")
         print("  - Profile baseline: \(response.profile.baselineBiologicalAgeYears)")
         print("  - State biological: \(response.state.currentBiologicalAgeYears)")
@@ -143,7 +187,6 @@ final class AgeStore: ObservableObject {
         print("  - State rejuvenation streak: \(response.state.rejuvenationStreakDays)")
         print("  - State acceleration streak: \(response.state.accelerationStreakDays)")
         
-        // Ensure UI updates on main thread (though @MainActor handles this, being explicit doesn't hurt)
         profileChronologicalAgeYears = response.profile.chronologicalAgeYears
         currentBiologicalAgeYears = response.state.currentBiologicalAgeYears
         agingDebtYears = response.state.agingDebtYears

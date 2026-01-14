@@ -36,6 +36,7 @@ struct RootView: View {
     @State private var authError: String?
     @State private var authErrorTitle: String = "Login Failed"
     @State private var isAuthenticating = false
+    @State private var showSplash = true
     
     init() {
         let userId = AuthManager.shared.uid ?? ""
@@ -46,7 +47,20 @@ struct RootView: View {
         let isSignedIn = authManager.currentUser != nil
         
         return Group {
-            if !isSignedIn {
+            if showSplash {
+                // Splash screen (shows on app launch)
+                SplashView(shouldDismiss: Binding(
+                    get: { !showSplash },
+                    set: { newValue in
+                        if newValue {
+                            // When animation completes, hide splash after fade transition
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                showSplash = false
+                            }
+                        }
+                    }
+                ))
+            } else if !isSignedIn {
                 AuthLandingView { mode, email, password, firstName, lastName, dateOfBirth in
                     Task {
                         await handleAuth(mode: mode, email: email, password: password, firstName: firstName, lastName: lastName, dateOfBirth: dateOfBirth)
@@ -192,11 +206,17 @@ struct RootView: View {
             var userProfile: AuthProfileResponse.ProfileInfo? = nil
             var hasCompletedOnboarding: Bool? = nil
             do {
+                // For signup, include consent versions (backend tracks consent automatically)
+                let privacyVersion = mode == .signup ? "1.0" : nil
+                let termsVersion = mode == .signup ? "1.0" : nil
+                
                 let profile = try await APIClient.shared.postAuthMe(
                     idToken: token,
                     firstName: mode == .signup ? firstName : nil,
                     lastName: mode == .signup ? lastName : nil,
-                    dateOfBirth: mode == .signup ? dateOfBirth : nil
+                    dateOfBirth: mode == .signup ? dateOfBirth : nil,
+                    acceptedPrivacyPolicyVersion: privacyVersion,
+                    acceptedTermsVersion: termsVersion
                 )
                 backendUserId = profile.uid
                 userProfile = profile.profile

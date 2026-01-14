@@ -258,8 +258,13 @@ class ChatViewModel: ObservableObject {
                 let chronoAge = result.chronologicalAgeYears
                 let diff = bioAge - chronoAge
                 let absDiff = abs(diff)
-                let direction = diff >= 0 ? "older" : "younger"
                 let diffText = String(format: "%.2f", absDiff)
+                let comparisonText: String
+                if diff >= 0 {
+                    comparisonText = "currently \(diffText) years above"
+                } else {
+                    comparisonText = "currently \(diffText) years below"
+                }
                 
                 // Determine key insights based on score
                 let scoreInsight: String
@@ -274,7 +279,7 @@ class ChatViewModel: ObservableObject {
                 let welcomeMessage = """
                 Welcome! 🎉
                 
-                This app tracks your biological age based on daily lifestyle choices. Your baseline: \(String(format: "%.2f", bioAge)) years biological age (\(diffText) years \(direction) than your \(String(format: "%.0f", chronoAge)) chronological years).
+                This app tracks your biological age based on daily lifestyle choices. Your baseline: \(String(format: "%.2f", bioAge)) years biological age, \(comparisonText) your \(String(format: "%.0f", chronoAge)) chronological years.
                 
                 \(scoreInsight)
                 
@@ -397,10 +402,15 @@ class ChatViewModel: ObservableObject {
                 
                 let bioAge = result.currentBiologicalAgeYears
                 let diff = bioAge - result.chronologicalAgeYears
-                let direction = diff >= 0 ? "older" : "younger"
                 let diffText = String(format: "%.2f", abs(diff))
+                let comparisonText: String
+                if diff >= 0 {
+                    comparisonText = "Your biological age is currently \(diffText) years above your chronological age"
+                } else {
+                    comparisonText = "Your biological age is currently \(diffText) years below your chronological age"
+                }
                 let explanation = """
-                Your estimated biological age is \(String(format: "%.2f", bioAge)) years (\(diffText) years \(direction) than your chronological age).
+                Your estimated biological age is \(String(format: "%.2f", bioAge)) years. \(comparisonText).
                 
                 Total score: \(String(format: "%.2f", result.totalScore))
                 Baseline offset (BAOYears): \(String(format: "%.2f", result.BAOYears))
@@ -548,15 +558,18 @@ class ChatViewModel: ObservableObject {
                     // Completion message with insight and follow-up
                     let completionText: String
                     if let todayEntry = result.today {
-                        let absDelta = abs(todayEntry.deltaYears)
+                        let delta = todayEntry.deltaYears
+                        let absDelta = abs(delta)
                         let deltaFormatted = String(format: "%.2f", absDelta)
-                        let direction: String
-                        if todayEntry.deltaYears < 0 {
-                            direction = "\(deltaFormatted) years younger"
-                        } else if todayEntry.deltaYears > 0 {
-                            direction = "\(deltaFormatted) years older"
+                        let sign = delta < 0 ? "−" : (delta > 0 ? "+" : "")
+                        
+                        let deltaMessage: String
+                        if delta < -0.5 {
+                            deltaMessage = "Today's Δ: \(sign)\(deltaFormatted) years (you got younger today)"
+                        } else if delta > 0.5 {
+                            deltaMessage = "Today's Δ: \(sign)\(deltaFormatted) years"
                         } else {
-                            direction = "no change"
+                            deltaMessage = "Today's Δ: minimal change"
                         }
                         
                         // Build reasons summary
@@ -571,7 +584,7 @@ class ChatViewModel: ObservableObject {
                         completionText = """
                         Daily check-in completed ✅
                         
-                        You're trending \(direction) today.\(reasonsText)
+                        \(deltaMessage).\(reasonsText)
                         
                         Is there a topic you'd like help with?
                         """
@@ -661,11 +674,24 @@ class ChatViewModel: ObservableObject {
                     // Completion message with insight and follow-up
                     let completionText: String
                     if let todayEntry = result.today {
-                        let delta = String(format: "%.2f", todayEntry.deltaYears)
+                        let delta = todayEntry.deltaYears
+                        let absDelta = abs(delta)
+                        let deltaFormatted = String(format: "%.2f", absDelta)
+                        let sign = delta < 0 ? "−" : (delta > 0 ? "+" : "")
+                        
+                        let deltaMessage: String
+                        if delta < -0.5 {
+                            deltaMessage = "Today's Δ: \(sign)\(deltaFormatted) years (you got younger today)"
+                        } else if delta > 0.5 {
+                            deltaMessage = "Today's Δ: \(sign)\(deltaFormatted) years"
+                        } else {
+                            deltaMessage = "Today's Δ: minimal change"
+                        }
+                        
                         completionText = """
                         Daily check-in completed ✅
                         
-                        Today's aging: \(delta) years
+                        \(deltaMessage)
                         Score: \(String(format: "%.2f", todayEntry.score))
                         
                         Want a quick plan to improve tomorrow's score?
@@ -784,21 +810,21 @@ class ChatViewModel: ObservableObject {
                     
                     switch result {
                     case .success(let answer):
-                        let assistantMessage = ChatMessage(
-                            role: .assistant,
-                            text: answer,
-                            timestamp: Date()
-                        )
-                        self?.messages.append(assistantMessage)
-                    case .failure(_):
-                        let errorMessage = ChatMessage(
-                            role: .assistant,
-                            text: "Sorry, I couldn't process that. Please try again.",
-                            timestamp: Date()
-                        )
-                        self?.messages.append(errorMessage)
-                    }
+                    let assistantMessage = ChatMessage(
+                        role: .assistant,
+                        text: answer,
+                        timestamp: Date()
+                    )
+                    self?.messages.append(assistantMessage)
+                case .failure(_):
+                    let errorMessage = ChatMessage(
+                        role: .assistant,
+                        text: "Sorry, I couldn't process that. Please try again.",
+                        timestamp: Date()
+                    )
+                    self?.messages.append(errorMessage)
                 }
+            }
         }
     }
     

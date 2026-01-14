@@ -24,6 +24,18 @@ final class AuthManager: ObservableObject {
         currentUser?.uid
     }
     
+    /// Returns whether the current user's email is verified.
+    /// Note: Email verification is NOT required for app usage, this is informational only.
+    var isEmailVerified: Bool {
+        currentUser?.isEmailVerified ?? false
+    }
+    
+    /// Reloads the current user to refresh email verification status.
+    func reloadUser() async throws {
+        try await currentUser?.reload()
+        currentUser = Auth.auth().currentUser
+    }
+    
     func signUp(email: String, password: String) async throws {
         let result = try await Auth.auth().createUser(withEmail: email, password: password)
         currentUser = result.user

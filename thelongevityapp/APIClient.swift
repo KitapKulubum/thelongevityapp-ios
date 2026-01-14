@@ -22,7 +22,7 @@ final class APIClient {
         #endif
     }
     
-    func postAuthMe(idToken: String, firstName: String? = nil, lastName: String? = nil, dateOfBirth: Date? = nil) async throws -> AuthProfileResponse {
+    func postAuthMe(idToken: String, firstName: String? = nil, lastName: String? = nil, dateOfBirth: Date? = nil, acceptedPrivacyPolicyVersion: String? = nil, acceptedTermsVersion: String? = nil) async throws -> AuthProfileResponse {
         let url = baseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("me")
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
@@ -42,7 +42,9 @@ final class APIClient {
             idToken: idToken,
             firstName: firstName,
             lastName: lastName,
-            dateOfBirth: dateOfBirthString
+            dateOfBirth: dateOfBirthString,
+            acceptedPrivacyPolicyVersion: acceptedPrivacyPolicyVersion,
+            acceptedTermsVersion: acceptedTermsVersion
         )
         urlRequest.httpBody = try JSONEncoder().encode(request)
         addAuthHeader(&urlRequest, token: idToken)
@@ -145,6 +147,101 @@ final class APIClient {
             print("[APIClient] /api/analytics/delta failed: \(error.localizedDescription)")
             throw APIError.networkError(endpoint: "/api/analytics/delta", underlyingError: error)
         }
+    }
+    
+    // MARK: - Password Reset
+    
+    func requestPasswordReset(email: String) async throws {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("password-reset").appendingPathComponent("request")
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let request = PasswordResetRequestRequest(email: email)
+        urlRequest.httpBody = try JSONEncoder().encode(request)
+        
+        _ = try await perform(urlRequest, as: EmptyResponse.self, endpoint: "/api/auth/password-reset/request")
+    }
+    
+    func verifyPasswordResetCode(email: String, code: String) async throws -> PasswordResetVerifyResponse {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("password-reset").appendingPathComponent("verify")
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let request = PasswordResetVerifyRequest(email: email, code: code)
+        urlRequest.httpBody = try JSONEncoder().encode(request)
+        
+        return try await perform(urlRequest, as: PasswordResetVerifyResponse.self, endpoint: "/api/auth/password-reset/verify")
+    }
+    
+    func confirmPasswordReset(resetToken: String, newPassword: String) async throws {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("password-reset").appendingPathComponent("confirm")
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let request = PasswordResetConfirmRequest(resetToken: resetToken, newPassword: newPassword)
+        urlRequest.httpBody = try JSONEncoder().encode(request)
+        
+        _ = try await perform(urlRequest, as: EmptyResponse.self, endpoint: "/api/auth/password-reset/confirm")
+    }
+    
+    // MARK: - Legal Documents
+    func getPrivacyPolicy() async throws -> PrivacyPolicyResponse {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("legal").appendingPathComponent("privacy")
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "GET"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        return try await perform(urlRequest, as: PrivacyPolicyResponse.self, endpoint: "/api/legal/privacy")
+    }
+    
+    func getTermsOfService() async throws -> TermsOfServiceResponse {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("legal").appendingPathComponent("terms")
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "GET"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        return try await perform(urlRequest, as: TermsOfServiceResponse.self, endpoint: "/api/legal/terms")
+    }
+    
+    func getConsent() async throws -> ConsentResponse {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("legal").appendingPathComponent("consent")
+        let urlRequest = try await authorizedRequest(url: url, method: "GET", body: nil as Data?)
+        
+        return try await perform(urlRequest, as: ConsentResponse.self, endpoint: "/api/legal/consent")
+    }
+    
+    func submitConsent(acceptedPrivacyPolicyVersion: String?, acceptedTermsVersion: String?) async throws {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("legal").appendingPathComponent("consent")
+        var urlRequest = try await authorizedRequest(url: url, method: "POST", body: nil as Data?)
+        
+        let request = ConsentRequest(
+            acceptedPrivacyPolicyVersion: acceptedPrivacyPolicyVersion,
+            acceptedTermsVersion: acceptedTermsVersion
+        )
+        urlRequest.httpBody = try JSONEncoder().encode(request)
+        
+        _ = try await perform(urlRequest, as: EmptyResponse.self, endpoint: "/api/legal/consent")
+    }
+    
+    // MARK: - Subscription
+    func verifySubscription(receiptData: String) async throws -> SubscriptionResponse {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("subscription").appendingPathComponent("verify")
+        var urlRequest = try await authorizedRequest(url: url, method: "POST", body: nil as Data?)
+        
+        let request = SubscriptionVerifyRequest(receiptData: receiptData)
+        urlRequest.httpBody = try JSONEncoder().encode(request)
+        
+        return try await perform(urlRequest, as: SubscriptionResponse.self, endpoint: "/api/subscription/verify")
+    }
+    
+    func getSubscriptionStatus() async throws -> SubscriptionResponse {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("subscription").appendingPathComponent("status")
+        let urlRequest = try await authorizedRequest(url: url, method: "GET", body: nil as Data?)
+        
+        return try await perform(urlRequest, as: SubscriptionResponse.self, endpoint: "/api/subscription/status")
     }
 }
 
@@ -284,6 +381,8 @@ struct AuthMeRequest: Codable {
     let firstName: String?
     let lastName: String?
     let dateOfBirth: String?  // Format: "yyyy-MM-dd"
+    let acceptedPrivacyPolicyVersion: String?
+    let acceptedTermsVersion: String?
 }
 
 struct AuthProfileResponse: Codable {
@@ -306,5 +405,69 @@ struct EmptyResponse: Codable {
 
 struct ProfileUpdateRequest: Codable {
     let timezone: String  // IANA timezone identifier
+}
+
+// MARK: - Password Reset DTOs
+struct PasswordResetRequestRequest: Codable {
+    let email: String
+}
+
+struct PasswordResetVerifyRequest: Codable {
+    let email: String
+    let code: String
+}
+
+struct PasswordResetVerifyResponse: Codable {
+    let resetToken: String
+}
+
+struct PasswordResetConfirmRequest: Codable {
+    let resetToken: String
+    let newPassword: String
+}
+
+// MARK: - Legal Documents DTOs
+struct PrivacyPolicyResponse: Codable {
+    let version: String
+    let lastUpdated: String
+    let content: String
+    let kvkkSection: String? // Turkish KVKK section
+}
+
+struct TermsOfServiceResponse: Codable {
+    let version: String
+    let lastUpdated: String
+    let content: String
+}
+
+struct ConsentRequest: Codable {
+    let acceptedPrivacyPolicyVersion: String?
+    let acceptedTermsVersion: String?
+}
+
+struct ConsentResponse: Codable {
+    let consent: ConsentInfo?
+    let needsUpdate: Bool
+    
+    struct ConsentInfo: Codable {
+        let acceptedPrivacyPolicyVersion: String?
+        let acceptedTermsVersion: String?
+        let acceptedAt: String?
+    }
+}
+
+// MARK: - Subscription DTOs
+struct SubscriptionVerifyRequest: Codable {
+    let receiptData: String // Base64-encoded receipt
+}
+
+struct SubscriptionResponse: Codable {
+    let subscription: SubscriptionInfo?
+    
+    struct SubscriptionInfo: Codable {
+        let status: String? // "active" | "expired" | null
+        let plan: String? // "membership_monthly" | "membership_yearly" | null
+        let renewalDate: String? // ISO date string
+    }
 }
 

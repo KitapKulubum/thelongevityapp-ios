@@ -25,6 +25,9 @@ struct AuthLandingView: View {
     @State private var agreeTerms: Bool = false
     @State private var isLoading: Bool = false
     @State private var signupStep: Int = 1 // 1 = Basics, 2 = Account
+    @State private var showForgotPassword: Bool = false
+    @State private var showPrivacyPolicy: Bool = false
+    @State private var showTermsOfService: Bool = false
     
     /// Hook to integrate with your auth/onboarding flow.
     /// Parameters: mode, email, password, firstName (optional), lastName (optional), dateOfBirth (optional)
@@ -38,7 +41,7 @@ struct AuthLandingView: View {
         self.onContinue = onContinue
     }
     
-    private let accent = Color(red: 0, green: 0.93, blue: 0.63)
+    private let accent = Color.primaryGreen
     private let darkBgTop = Color.black
     private let darkBgBottom = Color(red: 0.05, green: 0.16, blue: 0.12)
     
@@ -62,11 +65,39 @@ struct AuthLandingView: View {
                 
                 // Checkbox only shown in signup step 2
                 if mode == .signup && signupStep == 2 {
-                    HStack(spacing: 10) {
+                    HStack(alignment: .top, spacing: 10) {
                         CheckCircle(isOn: $agreeTerms)
-                        Text("I agree to the privacy & data usage terms")
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(.white.opacity(0.7))
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 4) {
+                                Text("I agree to the")
+                                    .font(.system(size: 13, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.7))
+                                
+                                Button {
+                                    showPrivacyPolicy = true
+                                } label: {
+                                    Text("Privacy Policy")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(Color.primaryGreen)
+                                        .underline()
+                                }
+                                
+                                Text("&")
+                                    .font(.system(size: 13, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.7))
+                                
+                                Button {
+                                    showTermsOfService = true
+                                } label: {
+                                    Text("Terms of Service")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(Color.primaryGreen)
+                                        .underline()
+                                }
+                            }
+                        }
+                        
                         Spacer()
                     }
                     .padding(.horizontal, 32)
@@ -83,6 +114,18 @@ struct AuthLandingView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showForgotPassword) {
+            ForgotPasswordFlowView { returnedEmail in
+                // Prefill email when returning from forgot password flow
+                email = returnedEmail
+            }
+        }
+        .sheet(isPresented: $showPrivacyPolicy) {
+            PrivacyPolicyView()
+        }
+        .sheet(isPresented: $showTermsOfService) {
+            TermsOfServiceView()
+        }
     }
     
     // MARK: - Subviews
@@ -122,7 +165,7 @@ struct AuthLandingView: View {
                     .clipShape(Circle())
             }
             
-            Text("LONGEVITY AI")
+            Text("The Longevity App")
                 .font(.system(size: 28, weight: .semibold))
                 .kerning(1.2)
                 .foregroundColor(.white)
@@ -137,7 +180,7 @@ struct AuthLandingView: View {
         ZStack {
             // Step 1: Basics (First name, Date of birth)
             if mode == .signup && signupStep == 1 {
-                VStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: 24) {
                     GlassTextField(
                         title: "First name",
                         placeholder: "John",
@@ -145,7 +188,7 @@ struct AuthLandingView: View {
                         icon: "person"
                     )
                     
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
                         GlassDatePicker(
                             title: "Date of birth",
                             date: $dateOfBirth
@@ -155,6 +198,7 @@ struct AuthLandingView: View {
                             .font(.system(size: 11, weight: .regular))
                             .foregroundColor(.white.opacity(0.5))
                             .padding(.leading, 4)
+                            .padding(.top, 2)
                     }
                 }
                 .transition(.asymmetric(
@@ -177,7 +221,10 @@ struct AuthLandingView: View {
                         title: "Create password",
                         placeholder: "•••••••",
                         text: $password,
-                        icon: "eye.slash"
+                        icon: "eye.slash",
+                        helperText: "A strong password helps protect your longevity data.",
+                        showValidation: true,
+                        email: email.trimmingCharacters(in: .whitespacesAndNewlines)
                     )
                 }
                 .transition(.asymmetric(
@@ -205,8 +252,7 @@ struct AuthLandingView: View {
                         )
                         
                         Button(action: {
-                            // TODO: Implement forgot password flow
-                            print("Forgot password tapped")
+                            showForgotPassword = true
                         }) {
                             Text("Forgot password?")
                                 .font(.system(size: 12, weight: .regular))
@@ -341,7 +387,7 @@ struct AuthLandingView: View {
 
 // MARK: - Components
 
-private struct GlassTextField: View {
+struct GlassTextField: View {
     let title: String
     let placeholder: String
     @Binding var text: String
@@ -378,13 +424,38 @@ private struct GlassTextField: View {
     }
 }
 
-private struct GlassSecureField: View {
+struct GlassSecureField: View {
     let title: String
     let placeholder: String
     @Binding var text: String
     let icon: String
+    var helperText: String? = nil
+    var validationMessage: String? = nil
+    var showValidation: Bool = false
+    var email: String? = nil // For password validation against email
     
     @State private var isSecure: Bool = true
+    @State private var hasStartedTyping: Bool = false
+    @State private var hasLostFocus: Bool = false
+    @FocusState private var isFocused: Bool
+    
+    private var shouldShowValidation: Bool {
+        (hasStartedTyping || hasLostFocus) && showValidation
+    }
+    
+    private var validationResult: PasswordValidationResult {
+        guard !text.isEmpty else { return .valid }
+        return PasswordValidator.validate(text, email: email)
+    }
+    
+    private var displayValidationMessage: String? {
+        guard shouldShowValidation, !text.isEmpty else { return nil }
+        if let validationMessage = validationMessage {
+            return validationMessage
+        }
+        let result = validationResult
+        return result == .valid ? nil : result.message
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -396,9 +467,35 @@ private struct GlassSecureField: View {
                 if isSecure {
                     SecureField(placeholder, text: $text)
                         .foregroundColor(.white)
+                        .focused($isFocused)
+                        .accessibilityLabel(title)
+                        .accessibilityHint(helperText ?? "")
+                        .onChange(of: text) { oldValue, newValue in
+                            if !hasStartedTyping && !newValue.isEmpty {
+                                hasStartedTyping = true
+                            }
+                        }
+                        .onChange(of: isFocused) { oldValue, newValue in
+                            if !newValue && hasStartedTyping {
+                                hasLostFocus = true
+                            }
+                        }
                 } else {
                     TextField(placeholder, text: $text)
                         .foregroundColor(.white)
+                        .focused($isFocused)
+                        .accessibilityLabel(title)
+                        .accessibilityHint(helperText ?? "")
+                        .onChange(of: text) { oldValue, newValue in
+                            if !hasStartedTyping && !newValue.isEmpty {
+                                hasStartedTyping = true
+                            }
+                        }
+                        .onChange(of: isFocused) { oldValue, newValue in
+                            if !newValue && hasStartedTyping {
+                                hasLostFocus = true
+                            }
+                        }
                 }
                 
                 Spacer()
@@ -420,6 +517,32 @@ private struct GlassSecureField: View {
                             .stroke(Color.white.opacity(0.08), lineWidth: 1)
                     )
             )
+            
+            // Helper text (always shown if provided)
+            if let helperText = helperText {
+                Text(helperText)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(.white.opacity(0.5))
+                    .padding(.leading, 4)
+                    .padding(.top, 2)
+                    .accessibilityLabel("Password helper: \(helperText)")
+            }
+            
+            // Validation message (shown when validation is active)
+            if let message = displayValidationMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color(red: 1.0, green: 0.76, blue: 0.03).opacity(0.9))
+                    
+                    Text(message)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(Color(red: 1.0, green: 0.76, blue: 0.03).opacity(0.9))
+                }
+                .padding(.leading, 4)
+                .padding(.top, 2)
+                .accessibilityLabel("Password validation: \(message)")
+            }
         }
     }
 }
@@ -443,7 +566,8 @@ private struct GlassDatePicker: View {
                     .datePickerStyle(.compact)
                     .labelsHidden()
                     .colorScheme(.dark)
-                    .accentColor(Color(red: 0, green: 0.93, blue: 0.63).opacity(0.9))
+                    .accentColor(Color.primaryGreen.opacity(0.9))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.vertical, 14)
             .padding(.horizontal, 14)
@@ -474,7 +598,7 @@ private struct CheckCircle: View {
                 if isOn {
                     Image(systemName: "checkmark")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(Color(red: 0, green: 0.93, blue: 0.63))
+                        .foregroundColor(Color.primaryGreen)
                 }
             }
         }

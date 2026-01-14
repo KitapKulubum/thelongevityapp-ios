@@ -11,6 +11,8 @@ import Charts
 struct MainTabView: View {
     @StateObject private var scoreViewModel = ScoreViewModel()
     @EnvironmentObject private var appState: AppState
+    @State private var showMembershipAfterOnboarding: Bool = false
+    @State private var hasShownMembershipAfterOnboarding: Bool = false
     
     init() {
         // AppState will be provided via environmentObject from RootView
@@ -56,6 +58,13 @@ struct MainTabView: View {
             scoreTab
             profileTab
         }
+        .onAppear {
+            // Ensure AI tab is selected when TabView appears (after login/app restart)
+            // This ensures users always see the AI screen first
+            if !isOnboarding {
+                appState.activeTab = .chat
+            }
+        }
         
         let configuredTabView = tabView
             .environmentObject(scoreViewModel)
@@ -99,13 +108,15 @@ struct MainTabView: View {
             }
         
         return withTodayChange
+            .sheet(isPresented: $showMembershipAfterOnboarding) {
+                MembershipView()
+            }
     }
     
     private func handleOnAppear(isOnboarding: Bool) {
-        // Force AI tab during onboarding
-        if isOnboarding {
-            appState.activeTab = .chat
-        }
+        // Always start on AI tab (chat) when app opens
+        // This ensures users see the AI screen first after login
+        appState.activeTab = .chat
         
         // Bootstrap app state
         Task {
@@ -135,6 +146,14 @@ struct MainTabView: View {
         // When onboarding completes, ensure we're on AI tab
         if newValue && !oldValue {
             appState.activeTab = .chat
+            
+            // Show membership screen after onboarding (only once)
+            if !hasShownMembershipAfterOnboarding {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    showMembershipAfterOnboarding = true
+                    hasShownMembershipAfterOnboarding = true
+                }
+            }
         }
     }
     
@@ -290,7 +309,7 @@ struct AICoachView: View {
                 VStack {
                     Spacer()
                     VStack(spacing: 12) {
-                        Text("Longevity AI is ready.")
+                        Text("The Longevity App is ready.")
                             .font(.system(size: 20, weight: .medium))
                         Text("Let's optimize your healthspan.")
                             .font(.system(size: 20, weight: .medium))
@@ -339,10 +358,10 @@ struct AICoachView: View {
                                                 .padding(.vertical, 10)
                                                 .background(
                                                     Capsule()
-                                                        .fill(Color.green.opacity(0.2))
+                                                        .fill(Color.primaryGreen.opacity(0.2))
                                                         .overlay(
                                                             Capsule()
-                                                                .stroke(Color.green.opacity(0.4), lineWidth: 1)
+                                                                .stroke(Color.primaryGreen.opacity(0.4), lineWidth: 1)
                                                         )
                                                 )
                                             }
@@ -473,24 +492,31 @@ struct ChatBubbleView: View {
         // Handle markdown formatting: headers, bullet points, bold, etc.
         let lines = processed.components(separatedBy: CharacterSet.newlines)
         let cleanedLines = lines.map { line -> String in
-            var l = line.trimmingCharacters(in: CharacterSet.whitespaces)
+            var l = line
             
-            // Handle headers (####, ###, ##, #)
-            if l.hasPrefix("#### ") {
-                l = "**" + l.replacingOccurrences(of: "#### ", with: "") + "**"
-            } else if l.hasPrefix("### ") {
-                l = "**" + l.replacingOccurrences(of: "### ", with: "") + "**"
-            } else if l.hasPrefix("## ") {
-                l = "**" + l.replacingOccurrences(of: "## ", with: "") + "**"
-            } else if l.hasPrefix("# ") {
-                l = "**" + l.replacingOccurrences(of: "# ", with: "") + "**"
+            // Handle headers (####, ###, ##, #) - only at start of line
+            if l.trimmingCharacters(in: .whitespaces).hasPrefix("#### ") {
+                let trimmed = l.trimmingCharacters(in: .whitespaces)
+                l = l.replacingOccurrences(of: trimmed, with: "**" + trimmed.replacingOccurrences(of: "#### ", with: "") + "**")
+            } else if l.trimmingCharacters(in: .whitespaces).hasPrefix("### ") {
+                let trimmed = l.trimmingCharacters(in: .whitespaces)
+                l = l.replacingOccurrences(of: trimmed, with: "**" + trimmed.replacingOccurrences(of: "### ", with: "") + "**")
+            } else if l.trimmingCharacters(in: .whitespaces).hasPrefix("## ") {
+                let trimmed = l.trimmingCharacters(in: .whitespaces)
+                l = l.replacingOccurrences(of: trimmed, with: "**" + trimmed.replacingOccurrences(of: "## ", with: "") + "**")
+            } else if l.trimmingCharacters(in: .whitespaces).hasPrefix("# ") {
+                let trimmed = l.trimmingCharacters(in: .whitespaces)
+                l = l.replacingOccurrences(of: trimmed, with: "**" + trimmed.replacingOccurrences(of: "# ", with: "") + "**")
             }
             
-            // Handle bullet points (* or -)
-            if l.hasPrefix("* ") {
-                l = "• " + l.replacingOccurrences(of: "* ", with: "")
-            } else if l.hasPrefix("- ") {
-                l = "• " + l.replacingOccurrences(of: "- ", with: "")
+            // Handle bullet points (* or -) - only at start of line after whitespace
+            let trimmedLine = l.trimmingCharacters(in: .whitespaces)
+            if trimmedLine.hasPrefix("* ") && !trimmedLine.hasPrefix("**") {
+                let leadingWhitespace = String(l.prefix(l.count - trimmedLine.count))
+                l = leadingWhitespace + "• " + trimmedLine.replacingOccurrences(of: "* ", with: "")
+            } else if trimmedLine.hasPrefix("- ") {
+                let leadingWhitespace = String(l.prefix(l.count - trimmedLine.count))
+                l = leadingWhitespace + "• " + trimmedLine.replacingOccurrences(of: "- ", with: "")
             }
             
             return l
@@ -511,12 +537,12 @@ struct ChatBubbleView: View {
                 .padding(.vertical, 14)
                 .background(
                     message.isUser ? 
-                    AnyView(Capsule().fill(Color.green.opacity(0.15))) : 
+                    AnyView(Capsule().fill(Color.primaryGreen.opacity(0.15))) : 
                     AnyView(RoundedRectangle(cornerRadius: 18).fill(Color.white.opacity(0.05)))
                 )
                 .overlay(
                     message.isUser ? 
-                    AnyView(Capsule().stroke(Color.green.opacity(0.2), lineWidth: 1)) : 
+                    AnyView(Capsule().stroke(Color.primaryGreen.opacity(0.2), lineWidth: 1)) : 
                     AnyView(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.1), lineWidth: 1))
                 )
                 .foregroundColor(.white)
@@ -584,7 +610,7 @@ struct HeaderView: View {
                             .foregroundColor(.white)
                         
                         Circle()
-                            .fill(Color.green)
+                            .fill(Color.primaryGreen)
                             .frame(width: 8, height: 8)
                             .shadow(color: .green, radius: 4)
                     }
@@ -664,7 +690,7 @@ struct BackgroundView: View {
             
             // Subtle Neural/Glow Background
             Circle()
-                .fill(RadialGradient(colors: [Color.green.opacity(0.05), Color.clear], center: .center, startRadius: 50, endRadius: 300))
+                .fill(RadialGradient(colors: [Color.primaryGreen.opacity(0.05), Color.clear], center: .center, startRadius: 50, endRadius: 300))
                 .frame(width: 600, height: 600)
                 .blur(radius: 80)
         }
@@ -844,16 +870,20 @@ struct LongevityTrendView: View {
             }
         }()
         
-        return HStack(spacing: 24) {
+        HStack(spacing: 24) {
             MetricCard(
                 title: "AGING DEBT",
                 value: String(format: "%.2fy", abs(scoreViewModel.agingDebtYears)),
-                colorState: agingDebtColorState
+                colorState: agingDebtColorState,
+                tooltipText: "The difference between your biological age and chronological age. Positive values indicate your body is aging faster than your calendar age."
             )
             
             MetricCard(
-                title: "TODAY Δ",
-                value: String(format: "%.2fy", abs(todayDelta)),
+                title: "DAILY Δ",
+                value: {
+                    let sign = todayDelta < 0 ? "−" : (todayDelta > 0 ? "+" : "")
+                    return "\(sign)\(String(format: "%.2f", abs(todayDelta)))y"
+                }(),
                 colorState: todayDeltaColorState
             )
             
@@ -1044,7 +1074,26 @@ struct LongevityTrendView: View {
                 .padding(.bottom, 28)
                 
                 // 3. Context Row (Aging Debt / Today Δ) - subtle
-                contextMetricsRow()
+                VStack(spacing: 8) {
+                    contextMetricsRow()
+                    
+                    // Helper text about daily change
+                    if let todayDelta = scoreViewModel.todayDeltaYears {
+                        let helperText: String
+                        if todayDelta < -0.5 {
+                            helperText = "Today's Δ: \(String(format: "%.2f", abs(todayDelta))) years (you got younger today)"
+                        } else if todayDelta > 0.5 {
+                            helperText = "Today's Δ: +\(String(format: "%.2f", abs(todayDelta))) years"
+                        } else {
+                            helperText = "Today's Δ: minimal change"
+                        }
+                        Text(helperText)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundColor(.white.opacity(0.4))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
                 .padding(.horizontal, screenPadding)
                 .padding(.bottom, 36)
                 
@@ -1095,14 +1144,14 @@ struct LongevityTrendView: View {
                     .kerning(1.2)
             }
             
-            // Rejuvenation insight (inline, under Biological Age) - optik hizalama
+            // Rejuvenation insight (inline, under Biological Age) - insightful but non-judgmental
             if diff < -0.5 && trendValue > 0 {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("✨")
                         .font(.system(size: 12))
                         .opacity(0.7)
                         .baselineOffset(-1)
-                    Text("\(String(format: "%.2f", trendValue)) years younger than your chronological age")
+                    Text("Your biological age is currently \(String(format: "%.2f", trendValue)) years below your chronological age")
                         .font(.system(size: 13, weight: .regular))
                         .foregroundColor(.white.opacity(0.6))
                 }
@@ -1114,7 +1163,7 @@ struct LongevityTrendView: View {
                         .font(.system(size: 12))
                         .opacity(0.7)
                         .baselineOffset(-1)
-                    Text("\(String(format: "%.2f", trendValue)) years older than your chronological age")
+                    Text("Your biological age is currently \(String(format: "%.2f", trendValue)) years above your chronological age — and this can improve with consistency.")
                         .font(.system(size: 13, weight: .regular))
                         .foregroundColor(.white.opacity(0.5))
                 }
@@ -1171,16 +1220,20 @@ struct LongevityTrendView: View {
             }
         }()
         
-        return HStack(spacing: 32) {
+        HStack(spacing: 32) {
             MetricCard(
                 title: "AGING DEBT",
                 value: String(format: "%.2fy", abs(scoreViewModel.agingDebtYears)),
-                colorState: agingDebtColorState
+                colorState: agingDebtColorState,
+                tooltipText: "The difference between your biological age and chronological age. Positive values indicate your body is aging faster than your calendar age."
             )
             
             MetricCard(
-                title: "TODAY Δ",
-                value: String(format: "%.2fy", abs(todayDelta)),
+                title: "DAILY Δ",
+                value: {
+                    let sign = todayDelta < 0 ? "−" : (todayDelta > 0 ? "+" : "")
+                    return "\(sign)\(String(format: "%.2f", abs(todayDelta)))y"
+                }(),
                 colorState: todayDeltaColorState
             )
             
@@ -1191,29 +1244,40 @@ struct LongevityTrendView: View {
     // MARK: - Calm Streak Section (reward style, not CTA)
     @ViewBuilder
     private func calmStreakSection() -> some View {
-        HStack {
-            Spacer()
-            
-            HStack(spacing: 8) {
-                Text("🔥")
-                    .font(.system(size: 13))
-                    .opacity(0.7)
-                Text("\(scoreViewModel.rejuvenationStreakDays) day consistency streak")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(.white.opacity(0.5))
+        VStack(spacing: 8) {
+            HStack {
+                Spacer()
+                
+                HStack(spacing: 8) {
+                    Text("🔥")
+                        .font(.system(size: 13))
+                        .opacity(0.7)
+                    Text("\(scoreViewModel.rejuvenationStreakDays) day consistency streak")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(0.04))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                        )
+                )
+                
+                Spacer()
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                Capsule()
-                    .fill(Color.white.opacity(0.04))
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                    )
-            )
             
-            Spacer()
+            // Debug overlay (only shown if enabled)
+            #if DEBUG
+            StreakDebugOverlay(
+                lastCheckinAt: nil, // TODO: Get from backend response if available
+                lastCheckinDayKey: nil, // TODO: Get from backend response if available
+                currentStreak: scoreViewModel.rejuvenationStreakDays
+            )
+            #endif
         }
     }
     
@@ -1245,7 +1309,7 @@ struct LongevityTrendView: View {
                         .padding(.vertical, 12)
                         .background(
                             Capsule()
-                                .fill(selectedRange == range ? Color.green.opacity(0.9) : Color.clear)
+                                .fill(selectedRange == range ? Color.primaryGreen.opacity(0.9) : Color.clear)
                         )
                 }
             }
@@ -1279,7 +1343,7 @@ enum BiologicalAgeColorState {
     var color: Color {
         switch self {
         case .positive:
-            return .green
+            return .primaryGreen
         case .neutral:
             return Color(white: 0.6) // Neutral gray
         case .attention:
@@ -1328,13 +1392,44 @@ struct MetricCard: View {
     let title: String
     let value: String
     let colorState: BiologicalAgeColorState
+    let tooltipText: String?
+    
+    @State private var showTooltip: Bool = false
+    
+    init(title: String, value: String, colorState: BiologicalAgeColorState, tooltipText: String? = nil) {
+        self.title = title
+        self.value = value
+        self.colorState = colorState
+        self.tooltipText = tooltipText
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 8, weight: .bold))
-                .foregroundColor(.white.opacity(0.3))
-                .kerning(1)
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.white.opacity(0.3))
+                    .kerning(1)
+                
+                if let tooltip = tooltipText {
+                    Button(action: {
+                        showTooltip.toggle()
+                    }) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 8))
+                            .foregroundColor(.white.opacity(0.3))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .popover(isPresented: $showTooltip) {
+                        Text(tooltip)
+                            .font(.system(size: 12))
+                            .foregroundColor(.white)
+                            .padding(12)
+                            .background(Color.black)
+                            .presentationCompactAdaptation(.popover)
+                    }
+                }
+            }
             
             Text(value)
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
@@ -1397,7 +1492,7 @@ struct TrendChartView: View {
                 }
                 .fill(
                     LinearGradient(
-                        colors: [Color.green.opacity(0.15), Color.clear],
+                        colors: [Color.primaryGreen.opacity(0.15), Color.clear],
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -1426,7 +1521,7 @@ struct TrendChartView: View {
                 if let lastPoint = chartPoints.last {
                     ZStack {
                         Circle()
-                            .fill(Color.green)
+                            .fill(Color.primaryGreen)
                             .frame(width: 12, height: 12)
                             .shadow(color: .green, radius: 10)
                         
@@ -1596,7 +1691,7 @@ struct DailyCheckInSheet: View {
         }
         .frame(maxWidth: .infinity)
         .padding()
-                            .background(isSubmitting ? Color.gray : Color.green)
+                            .background(isSubmitting ? Color.gray : Color.primaryGreen)
                             .foregroundColor(.white)
                             .cornerRadius(12)
                         }
@@ -1683,15 +1778,20 @@ struct ProfileView: View {
     @EnvironmentObject private var ageStore: AgeStore
     @EnvironmentObject private var appState: AppState
     @StateObject private var authManager = AuthManager.shared
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
     @State private var showLogoutAlert: Bool = false
     @State private var isLoggingOut: Bool = false
     @State private var showDeleteAccountAlert: Bool = false
     @State private var isDeletingAccount: Bool = false
     @State private var selectedLanguage: String = "English"
+    @StateObject private var languageManager = LanguageManager.shared
     @State private var showTerms: Bool = false
     @State private var showPrivacy: Bool = false
+    @State private var showNotifications: Bool = false
     @State private var contentOffset: CGFloat = 0
     @State private var isDeletePressed: Bool = false
+    @State private var isEmailVerificationBannerDismissed: Bool = false
+    @StateObject private var notificationManager = NotificationManager.shared
     
     private let availableLanguages = ["English", "Türkçe", "Español", "Français", "Deutsch"]
     private let cardSpacing: CGFloat = 24
@@ -1740,13 +1840,25 @@ struct ProfileView: View {
                     .padding(.top, 16)
                     .padding(.bottom, 32)
                     
-                    // Membership Card (Primary)
+                    // Membership Card (Primary) - Show first for prominence
                     membershipCard
                         .padding(.horizontal, cardPadding)
                         .padding(.bottom, cardSpacing)
                     
+                    // Email Verification Banner (if needed) - Moved below membership
+                    if !authManager.isEmailVerified && !isEmailVerificationBannerDismissed {
+                        emailVerificationBanner
+                            .padding(.horizontal, cardPadding)
+                            .padding(.bottom, cardSpacing)
+                    }
+                    
                     // Language Card (Secondary)
                     languageCard
+                        .padding(.horizontal, cardPadding)
+                        .padding(.bottom, cardSpacing)
+                    
+                    // Notifications Section
+                    notificationsSection
                         .padding(.horizontal, cardPadding)
                         .padding(.bottom, cardSpacing)
                     
@@ -1782,9 +1894,23 @@ struct ProfileView: View {
                 }
             }
         } message: {
-            Text("This will permanently delete your data and cannot be undone.")
+            if !authManager.isEmailVerified {
+                Text("Email verification is required to delete your account. Please verify your email first.")
+            } else {
+                Text("This will permanently delete your data and cannot be undone.")
+            }
         }
         .onAppear {
+            // Reload user to refresh email verification status
+            Task {
+                try? await authManager.reloadUser()
+                // Load subscription status
+                await subscriptionManager.loadSubscriptionStatus()
+            }
+            // Check notification authorization status
+            notificationManager.checkAuthorizationStatus()
+            // Sync selected language with language manager
+            selectedLanguage = languageManager.currentLanguage
             withAnimation(.easeOut(duration: 0.6)) {
                 contentOffset = 1
             }
@@ -1795,58 +1921,121 @@ struct ProfileView: View {
         .sheet(isPresented: $showPrivacy) {
             PrivacyPolicyView()
         }
+        .sheet(isPresented: $showNotifications) {
+            NotificationSettingsView()
+        }
     }
     
     // MARK: - Membership Card (Primary, visually dominant)
     private var membershipCard: some View {
-        Button(action: {
-            let impact = UIImpactFeedbackGenerator(style: .light)
-            impact.impactOccurred()
-            openAppleSubscriptions()
-        }) {
-            MinimalCard(elevated: true) {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Membership")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(.white)
-                            
-                            Text("Monthly membership")
-                                .font(.system(size: 14, weight: .regular))
-                                .foregroundColor(.white.opacity(0.6))
-                            
-                            Text("Managed via Apple Subscriptions")
-                                .font(.system(size: 12, weight: .regular))
-                                .foregroundColor(.white.opacity(0.4))
-                        }
-                        
-            Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white.opacity(0.4))
-                    }
+        MinimalCard(elevated: true) {
+            VStack(alignment: .leading, spacing: 20) {
+                // Title Section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Membership")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
                     
-                    HStack(spacing: 6) {
-                        Text("Open Subscriptions")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white.opacity(0.7))
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                    .padding(.top, 4)
+                    Text("Longevity Premium")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
+                    
+                    // Status Line (dynamic)
+                    Text(subscriptionManager.subscriptionStatus.displayText)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.white.opacity(0.6))
                 }
-                .padding(24)
+                
+                // Benefits List (read-only, no upsell tone)
+                VStack(alignment: .leading, spacing: 10) {
+                    membershipBenefitRow(text: "Biological age tracking")
+                    membershipBenefitRow(text: "Weekly & monthly insights")
+                    membershipBenefitRow(text: "AI-powered interpretations")
+                }
+                .padding(.top, 4)
+                
+                // Info Badge (optional, subtle)
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(.white.opacity(0.4))
+                    Text("Subscriptions are handled securely through your Apple ID.")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                .padding(.top, 4)
+                
+                // Primary Action Button
+                Button(action: {
+                    let impact = UIImpactFeedbackGenerator(style: .light)
+                    impact.impactOccurred()
+                    subscriptionManager.openSubscriptionManagement()
+                }) {
+                    HStack {
+                        Spacer()
+                        Text(subscriptionManager.subscriptionStatus == .inactive ? "View subscription options" : "Manage subscription")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.black)
+                        Spacer()
+                    }
+                    .padding(.vertical, 14)
+                    .background(
+                        Capsule()
+                            .fill(Color.primaryGreen)
+                    )
+                }
+                .padding(.top, 8)
+                
+                // Microcopy under button
+                Text("You'll be redirected to Apple's subscription settings.")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(.white.opacity(0.4))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
             }
+            .padding(24)
         }
-        .buttonStyle(MinimalButtonStyle())
+        .overlay(
+            // Subtle glow effect
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.primaryGreen.opacity(0.2),
+                            Color.primaryGreen.opacity(0.0)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        )
     }
     
-    private func openAppleSubscriptions() {
-        if let url = URL(string: "itms-apps://apps.apple.com/account/subscriptions") {
-            UIApplication.shared.open(url)
+    private func membershipBenefitRow(text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(Color.primaryGreen)
+                .frame(width: 16)
+            
+            Text(text)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(.white.opacity(0.8))
+        }
+    }
+    
+    private func featureRow(icon: String, text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(Color.primaryGreen)
+                .frame(width: 16)
+            
+            Text(text)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundColor(.white.opacity(0.7))
         }
     }
     
@@ -1856,6 +2045,7 @@ struct ProfileView: View {
             ForEach(availableLanguages, id: \.self) { language in
                     Button(action: {
                     selectedLanguage = language
+                    languageManager.setLanguage(language)
                 }) {
                     HStack {
                         Text(language)
@@ -1867,15 +2057,15 @@ struct ProfileView: View {
             }
         } label: {
             MinimalCard {
-                HStack(spacing: 16) {
+                HStack(spacing: 12) {
                     Image(systemName: "globe")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white.opacity(0.5))
-                        .frame(width: 20)
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(.white.opacity(0.4))
+                        .frame(width: 16)
                     
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Language")
-                                .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
                         
                         Text(selectedLanguage)
@@ -1894,6 +2084,49 @@ struct ProfileView: View {
         }
     }
     
+    // MARK: - Notifications Section
+    private var notificationsSection: some View {
+        MinimalCard {
+            Button(action: { showNotifications = true }) {
+                HStack(spacing: 12) {
+                    Image(systemName: "bell")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(.white.opacity(0.3))
+                        .frame(width: 16)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Notifications")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.white.opacity(0.5))
+                        
+                        Text("Daily reminders · Insight alerts")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+                    
+                    Spacer()
+                    
+                    // Status indicator
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(notificationManager.authorizationStatus == .authorized ? Color.primaryGreen : Color.white.opacity(0.3))
+                            .frame(width: 6, height: 6)
+                        
+                        Text(notificationManager.authorizationStatus == .authorized ? "On" : "Off")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.3))
+                }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 4)
+            }
+        }
+    }
+    
     // MARK: - Legal Section (Low emphasis)
     private var legalSection: some View {
         MinimalCard {
@@ -1901,46 +2134,88 @@ struct ProfileView: View {
                 Button(action: { showTerms = true }) {
                     HStack(spacing: 12) {
                         Image(systemName: "doc.text")
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundColor(.white.opacity(0.3))
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.white.opacity(0.25))
                             .frame(width: 16)
                         
                         Text("Terms of Service")
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(.white.opacity(0.5))
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(.white.opacity(0.4))
                         
                         Spacer()
                     }
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 4)
                 }
                 
                 Divider()
-                    .background(Color.white.opacity(0.1))
-                    .padding(.leading, 28)
+                    .background(Color.white.opacity(0.08))
+                    .padding(.leading, 32)
                 
                 Button(action: { showPrivacy = true }) {
                     HStack(spacing: 12) {
                         Image(systemName: "lock.shield")
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundColor(.white.opacity(0.3))
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.white.opacity(0.25))
                             .frame(width: 16)
                         
                         Text("Privacy Policy")
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(.white.opacity(0.5))
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(.white.opacity(0.4))
                         
                         Spacer()
                     }
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 4)
                 }
             }
-            .padding(.horizontal, 16)
         }
+    }
+    
+    // MARK: - Email Verification Banner
+    private var emailVerificationBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "envelope.badge")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundColor(.white.opacity(0.4))
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Verify your email")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+                
+                Text("to secure your data")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            
+            Spacer()
+            
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    isEmailVerificationBannerDismissed = true
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+        )
     }
     
     // MARK: - Account Actions (Bottom, de-emphasized)
     private var accountActions: some View {
-        VStack(spacing: 20) {
+        VStack(alignment: .leading, spacing: 20) {
             // Log out (neutral text button)
             Button(action: {
                 let impact = UIImpactFeedbackGenerator(style: .light)
@@ -1950,23 +2225,32 @@ struct ProfileView: View {
                 Text("Log out")
                     .font(.system(size: 15, weight: .regular))
                     .foregroundColor(.white.opacity(0.6))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             
             // Delete account (small text button, red only on interaction)
-            Button(action: {
-                showDeleteAccountAlert = true
-            }) {
-                Text("Delete account")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(isDeletePressed ? .red.opacity(0.8) : .white.opacity(0.4))
-            }
-            .onLongPressGesture(minimumDuration: 0) { pressing in
-                isDeletePressed = pressing
-                if pressing {
-                    let impact = UIImpactFeedbackGenerator(style: .light)
-                    impact.impactOccurred()
+            VStack(alignment: .leading, spacing: 4) {
+                Button(action: {
+                    showDeleteAccountAlert = true
+                }) {
+                    Text("Delete account")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(isDeletePressed ? .red.opacity(0.8) : .white.opacity(0.35))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-            } perform: {}
+                .onLongPressGesture(minimumDuration: 0) { pressing in
+                    isDeletePressed = pressing
+                    if pressing {
+                        let impact = UIImpactFeedbackGenerator(style: .light)
+                        impact.impactOccurred()
+                    }
+                } perform: {}
+                
+                Text("This action is permanent")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(.white.opacity(0.3))
+                    .padding(.leading, 0)
+            }
         }
     }
     
@@ -1996,10 +2280,18 @@ struct ProfileView: View {
     }
     
     private func handleDeleteAccount() async {
+        // Check email verification (required for sensitive action)
+        await MainActor.run {
+            if !authManager.isEmailVerified {
+                print("[ProfileView] Delete account blocked: email not verified")
+                showDeleteAccountAlert = false
+                return
+            }
+        }
+        
         isDeletingAccount = true
         // TODO: Implement delete account API call
-        // For now, just show a placeholder
-        // Call backend delete account endpoint when available
+        // Backend will also verify email verification status via requireEmailVerification middleware
         // try await APIClient.shared.deleteAccount()
         print("[ProfileView] Delete account requested")
         
@@ -2022,13 +2314,13 @@ struct AICoachIndicator: View {
             ZStack {
                 // Outer pulsing ring
                 Circle()
-                    .stroke(Color.green.opacity(ringOpacity), lineWidth: 2)
+                    .stroke(Color.primaryGreen.opacity(ringOpacity), lineWidth: 2)
                     .frame(width: 12, height: 12)
                     .scaleEffect(pulseScale)
                 
                 // Inner dot
                 Circle()
-                    .fill(Color.green)
+                    .fill(Color.primaryGreen)
                     .frame(width: 6, height: 6)
                     .shadow(color: .green.opacity(0.6), radius: 4)
             }
@@ -2057,7 +2349,7 @@ struct MinimalProfileIcon: View {
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [Color.green.opacity(0.1), Color.green.opacity(0.0)],
+                        colors: [Color.primaryGreen.opacity(0.1), Color.primaryGreen.opacity(0.0)],
                         center: .center,
                         startRadius: 15,
                         endRadius: 35
@@ -2070,7 +2362,7 @@ struct MinimalProfileIcon: View {
             Circle()
                 .stroke(Color.white.opacity(0.15), lineWidth: 1.5)
                 .frame(width: 60, height: 60)
-                .shadow(color: Color.green.opacity(0.2), radius: 8)
+                .shadow(color: Color.primaryGreen.opacity(0.2), radius: 8)
             
             // Inner circle
             Circle()
@@ -2106,12 +2398,12 @@ struct AICoachStatusRow: View {
             // Tiny pulsing dot
             ZStack {
                 Circle()
-                    .fill(Color.green.opacity(0.3))
+                    .fill(Color.primaryGreen.opacity(0.3))
                     .frame(width: 8, height: 8)
                     .scaleEffect(pulseScale)
                 
                 Circle()
-                    .fill(Color.green)
+                    .fill(Color.primaryGreen)
                     .frame(width: 6, height: 6)
             }
             
@@ -2193,48 +2485,48 @@ struct MinimalButtonStyle: ButtonStyle {
 // MARK: - Terms of Service View
 struct TermsOfServiceView: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var document: TermsOfServiceResponse?
+    @State private var isLoading: Bool = true
+    @State private var errorMessage: String?
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        Text("Terms of Service")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.bottom, 8)
-                        
-                        Text("Last updated: December 2025")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(.white.opacity(0.5))
-                        
-                        Text("Please read these terms of service carefully before using our application.")
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundColor(.white.opacity(0.8))
-                            .padding(.top, 8)
-                        
-                        // Add your terms content here
-                        Text("1. Acceptance of Terms\n\nBy accessing and using this application, you accept and agree to be bound by the terms and provision of this agreement.")
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundColor(.white.opacity(0.8))
-                            .padding(.top, 16)
-                    }
-                    .padding(20)
+        Group {
+            if isLoading {
+                LegalDocumentLoadingView()
+            } else if let error = errorMessage {
+                LegalDocumentErrorView(error: error) {
+                    loadDocument()
+                }
+            } else if let document = document {
+                LegalDocumentView(
+                    title: "Terms of Service",
+                    content: document.content,
+                    lastUpdated: document.lastUpdated
+                )
+            }
+        }
+        .onAppear {
+            loadDocument()
+        }
+    }
+    
+    private func loadDocument() {
+        isLoading = true
+        errorMessage = nil
+        
+        Task {
+            do {
+                let response = try await APIClient.shared.getTermsOfService()
+                await MainActor.run {
+                    document = response
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "Unable to load Terms of Service. Please check your connection and try again."
+                    isLoading = false
                 }
             }
-            .navigationTitle("Terms of Service")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .foregroundColor(.green)
-                }
-            }
-            .preferredColorScheme(.dark)
         }
     }
 }
@@ -2242,48 +2534,49 @@ struct TermsOfServiceView: View {
 // MARK: - Privacy Policy View
 struct PrivacyPolicyView: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var document: PrivacyPolicyResponse?
+    @State private var isLoading: Bool = true
+    @State private var errorMessage: String?
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        Text("Privacy Policy")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.bottom, 8)
-                        
-                        Text("Last updated: December 2025")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(.white.opacity(0.5))
-                        
-                        Text("We are committed to protecting your privacy. This policy explains how we collect, use, and safeguard your information.")
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundColor(.white.opacity(0.8))
-                            .padding(.top, 8)
-                        
-                        // Add your privacy policy content here
-                        Text("1. Information We Collect\n\nWe collect information that you provide directly to us, including your name, email address, and health metrics.")
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundColor(.white.opacity(0.8))
-                            .padding(.top, 16)
-                    }
-                    .padding(20)
+        Group {
+            if isLoading {
+                LegalDocumentLoadingView()
+            } else if let error = errorMessage {
+                LegalDocumentErrorView(error: error) {
+                    loadDocument()
+                }
+            } else if let document = document {
+                LegalDocumentView(
+                    title: "Privacy Policy",
+                    content: document.content,
+                    lastUpdated: document.lastUpdated,
+                    kvkkSection: document.kvkkSection
+                )
+            }
+        }
+        .onAppear {
+            loadDocument()
+        }
+    }
+    
+    private func loadDocument() {
+        isLoading = true
+        errorMessage = nil
+        
+        Task {
+            do {
+                let response = try await APIClient.shared.getPrivacyPolicy()
+                await MainActor.run {
+                    document = response
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "Unable to load Privacy Policy. Please check your connection and try again."
+                    isLoading = false
                 }
             }
-            .navigationTitle("Privacy Policy")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .foregroundColor(.green)
-                }
-            }
-            .preferredColorScheme(.dark)
         }
     }
 }
@@ -2311,7 +2604,7 @@ struct ReferView: View {
                                 .font(.system(size: 24, weight: .bold))
                                 .foregroundColor(.white)
                             
-                            Text("Share Longevity AI with friends and earn rewards")
+                            Text("Share The Longevity App with friends and earn rewards")
                                 .font(.system(size: 14, weight: .regular))
                                 .foregroundColor(.white.opacity(0.6))
                                 .multilineTextAlignment(.center)
@@ -2335,10 +2628,10 @@ struct ReferView: View {
                                     .frame(maxWidth: .infinity)
                                     .background(
                                         RoundedRectangle(cornerRadius: 12)
-                                            .fill(Color.green.opacity(0.1))
+                                            .fill(Color.primaryGreen.opacity(0.1))
                                             .overlay(
                                                 RoundedRectangle(cornerRadius: 12)
-                                                    .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                                                    .stroke(Color.primaryGreen.opacity(0.3), lineWidth: 1)
                                             )
                                     )
                                 
@@ -2355,10 +2648,10 @@ struct ReferView: View {
                                         .frame(width: 50, height: 50)
                                         .background(
                                             Circle()
-                                                .fill(Color.green.opacity(0.1))
+                                                .fill(Color.primaryGreen.opacity(0.1))
                                                 .overlay(
                                                     Circle()
-                                                        .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                                                        .stroke(Color.primaryGreen.opacity(0.3), lineWidth: 1)
                                                 )
                                         )
                                 }
@@ -2396,10 +2689,10 @@ struct ReferView: View {
                                 .padding(.vertical, 16)
                                 .background(
                                     RoundedRectangle(cornerRadius: 12)
-                                        .fill(Color.green.opacity(0.2))
+                                        .fill(Color.primaryGreen.opacity(0.2))
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 12)
-                                                .stroke(Color.green.opacity(0.4), lineWidth: 1)
+                                                .stroke(Color.primaryGreen.opacity(0.4), lineWidth: 1)
                                         )
                                 )
                             }
@@ -2424,7 +2717,7 @@ struct ReferView: View {
     }
     
     private func shareReferralCode() {
-        let text = "Join me on Longevity AI! Use my referral code: \(referralCode)"
+        let text = "Join me on The Longevity App! Use my referral code: \(referralCode)"
         let activityVC = UIActivityViewController(activityItems: [text], applicationActivities: nil)
         
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
@@ -2502,7 +2795,7 @@ struct SubscriptionView: View {
                             .padding(.vertical, 16)
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color.green)
+                                    .fill(Color.primaryGreen)
                             )
                         }
                         .padding(.horizontal, 20)
@@ -2591,7 +2884,7 @@ struct GoalChip: View {
                     .fill(isSelected ? Color.white.opacity(0.08) : Color.clear)
                     .overlay(
                         Capsule()
-                            .stroke(Color.green.opacity(isSelected ? 0.3 : 0.15), lineWidth: 1)
+                            .stroke(Color.primaryGreen.opacity(isSelected ? 0.3 : 0.15), lineWidth: 1)
                     )
             )
         }
@@ -2612,13 +2905,13 @@ struct SegmentedPill: View {
                 .padding(.vertical, 10)
                 .background(
                     Capsule()
-                        .fill(isSelected ? Color.green.opacity(0.2) : Color.clear)
+                        .fill(isSelected ? Color.primaryGreen.opacity(0.2) : Color.clear)
                         .overlay(
                             Capsule()
-                                .stroke(isSelected ? Color.green.opacity(0.4) : Color.white.opacity(0.1), lineWidth: 1)
+                                .stroke(isSelected ? Color.primaryGreen.opacity(0.4) : Color.white.opacity(0.1), lineWidth: 1)
                         )
                 )
-                .shadow(color: isSelected ? Color.green.opacity(0.3) : Color.clear, radius: 8)
+                .shadow(color: isSelected ? Color.primaryGreen.opacity(0.3) : Color.clear, radius: 8)
         }
     }
 }
@@ -2643,10 +2936,10 @@ struct OptionButton: View {
             .padding(.vertical, 14)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? Color.green.opacity(0.2) : Color.white.opacity(0.05))
+                    .fill(isSelected ? Color.primaryGreen.opacity(0.2) : Color.white.opacity(0.05))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(isSelected ? Color.green.opacity(0.4) : Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(isSelected ? Color.primaryGreen.opacity(0.4) : Color.white.opacity(0.1), lineWidth: 1)
                     )
             )
         }
@@ -2670,7 +2963,7 @@ struct OnboardingProgressBar: View {
                     
                     // Progress fill
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.green)
+                        .fill(Color.primaryGreen)
                         .frame(width: geometry.size.width * min(max(progress, 0), 1), height: 6)
                         .animation(.easeInOut(duration: 0.3), value: progress)
                 }
@@ -2735,7 +3028,7 @@ struct DailyCheckInPinnedCard: View {
                         .fill(Color.white.opacity(0.05))
                         .overlay(
                             RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                                .stroke(Color.primaryGreen.opacity(0.3), lineWidth: 1)
                         )
                 )
                 .padding(.horizontal, 20)
@@ -2783,7 +3076,7 @@ struct DailyCheckInPinnedCard: View {
                                     .frame(height: 4)
                                 
                                 RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.green)
+                                    .fill(Color.primaryGreen)
                                     .frame(width: geometry.size.width * viewModel.dailyProgress, height: 4)
                             }
                         }
@@ -2836,7 +3129,7 @@ struct DailyCheckInPinnedCard: View {
     }
 }
 
-// MARK: - Longevity AI Loading View
+// MARK: - The Longevity App Loading View
 struct LongevityAILoadingView: View {
     @State private var rotation: Double = 0
     
@@ -2852,7 +3145,7 @@ struct LongevityAILoadingView: View {
             }
             .frame(width: 36, height: 36)
             
-            Text("Longevity AI")
+            Text("The Longevity App")
                 .font(.system(size: 14, weight: .medium, design: .rounded))
                 .foregroundColor(.white.opacity(0.7))
         }
@@ -2933,6 +3226,7 @@ struct DeltaChartView: View {
 
 struct DailyDeltaChartView: View {
     let points: [DeltaDailyPoint]
+    @StateObject private var languageManager = LanguageManager.shared
     
     var body: some View {
         if points.isEmpty {
@@ -2993,9 +3287,13 @@ struct DailyDeltaChartView: View {
                 AxisMarks(values: .automatic) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                         .foregroundStyle(.white.opacity(0.1))
-                    AxisValueLabel(format: .dateTime.month().day())
-                        .foregroundStyle(.white.opacity(0.6))
-                        .font(.system(size: 9))
+                    if let date = value.as(Date.self) {
+                        AxisValueLabel {
+                            Text(formatDate(date))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .font(.system(size: 9))
+                        }
+                    }
                 }
             }
             .chartYAxis {
@@ -3017,10 +3315,13 @@ struct DailyDeltaChartView: View {
     }
     
     private func parseDate(_ dateString: String) -> Date {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone.current
+        let formatter = languageManager.dateFormatter(format: "yyyy-MM-dd")
         return formatter.date(from: dateString) ?? Date()
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = languageManager.dateFormatter(format: "MMM d")
+        return formatter.string(from: date)
     }
 }
 
@@ -3028,6 +3329,7 @@ struct DailyDeltaChartView: View {
 
 struct YearlyDeltaChartView: View {
     let points: [DeltaMonthlyPoint]
+    @StateObject private var languageManager = LanguageManager.shared
     
     var body: some View {
         if points.isEmpty {
@@ -3068,9 +3370,13 @@ struct YearlyDeltaChartView: View {
                 AxisMarks(values: .automatic) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                         .foregroundStyle(.white.opacity(0.1))
-                    AxisValueLabel(format: .dateTime.month(.abbreviated))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .font(.system(size: 9))
+                    if let date = value.as(Date.self) {
+                        AxisValueLabel {
+                            Text(formatMonth(date))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .font(.system(size: 9))
+                        }
+                    }
                 }
             }
             .chartYAxis {
@@ -3092,10 +3398,13 @@ struct YearlyDeltaChartView: View {
     }
     
     private func parseMonth(_ monthString: String) -> Date {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM"
-        formatter.timeZone = TimeZone.current
+        let formatter = languageManager.dateFormatter(format: "yyyy-MM")
         return formatter.date(from: monthString) ?? Date()
+    }
+    
+    private func formatMonth(_ date: Date) -> String {
+        let formatter = languageManager.monthFormatter()
+        return formatter.string(from: date)
     }
 }
 

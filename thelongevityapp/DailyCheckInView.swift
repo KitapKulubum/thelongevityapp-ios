@@ -268,7 +268,7 @@ struct DailyCheckInView: View {
                                     // Apply same color logic as MainTabView
                                     // debt is already the difference (biologicalAge - chronologicalAge)
                                     if debt < -0.5 {
-                                        return .green // Positive rejuvenation
+                                        return .primaryGreen // Positive rejuvenation
                                     } else if abs(debt) <= 0.5 {
                                         return Color(white: 0.6) // Neutral gray
                                     } else {
@@ -287,7 +287,7 @@ struct DailyCheckInView: View {
                                 }
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
-                                .background(Color.green.opacity(0.1))
+                                .background(Color.primaryGreen.opacity(0.1))
                                 .cornerRadius(20)
                             }
                             
@@ -340,14 +340,11 @@ struct DailyCheckInView: View {
 
         isSaving = true
 
-        // Get today's date in ISO format (YYYY-MM-DD)
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        let today = dateFormatter.string(from: Date())
-        
+        // Note: date field removed - backend computes it based on user's timezone
+        // Backend uses user's timezone (sent via profile) to determine the correct day boundary
         let request = DailyUpdateRequest(
             metrics: .init(
-                date: today,
+                date: "", // Empty string - backend will compute based on timezone
                 sleepHours: sleepHours,
                 steps: steps,
                 vigorousMinutes: vigorous,
@@ -378,10 +375,17 @@ struct DailyCheckInView: View {
                     self.showAlert = true
                     }
                 } else {
-                    // Success - refresh all insights data
-                    Task {
-                        await ageStore.loadSummary()
-                        await scoreViewModel.fetchSummary()
+                    // Success - update ScoreViewModel immediately with latest state from AgeStore
+                    // AgeStore has already been updated by submitDailyUpdate() with backend response
+                    // This ensures streak is displayed correctly right away
+                    if let state = ageStore.state {
+                        scoreViewModel.chronologicalAgeYears = state.chronologicalAgeYears
+                        scoreViewModel.biologicalAgeYears = state.currentBiologicalAgeYears ?? state.chronologicalAgeYears
+                        scoreViewModel.agingDebtYears = state.agingDebtYears
+                        scoreViewModel.rejuvenationStreakDays = state.rejuvenationStreakDays
+                        scoreViewModel.accelerationStreakDays = state.accelerationStreakDays
+                        scoreViewModel.totalRejuvenationDays = state.totalRejuvenationDays
+                        scoreViewModel.totalAccelerationDays = state.totalAccelerationDays
                     }
                     
                     // Update local state for display
@@ -393,16 +397,10 @@ struct DailyCheckInView: View {
                     self.accelerationStreak = ageStore.accelerationStreakDays
                     self.hasResult = true
                     
-                    // Push latest state into shared ScoreViewModel so Score tab updates immediately.
-                    // Streak values are from backend response, not calculated locally
-                    if let state = ageStore.state {
-                        scoreViewModel.chronologicalAgeYears = state.chronologicalAgeYears // chronological age is fixed from backend
-                        scoreViewModel.biologicalAgeYears = state.currentBiologicalAgeYears ?? state.chronologicalAgeYears
-                        scoreViewModel.agingDebtYears = state.agingDebtYears
-                        scoreViewModel.rejuvenationStreakDays = state.rejuvenationStreakDays
-                        scoreViewModel.accelerationStreakDays = state.accelerationStreakDays
-                        scoreViewModel.totalRejuvenationDays = state.totalRejuvenationDays
-                        scoreViewModel.totalAccelerationDays = state.totalAccelerationDays
+                    // Refresh summary to ensure all data is in sync (but streak is already updated above)
+                    Task {
+                        await ageStore.loadSummary()
+                        await scoreViewModel.fetchSummary()
                     }
                     
                     // Generate message based on current data

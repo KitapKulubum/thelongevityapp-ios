@@ -161,7 +161,7 @@ struct OrganicPath2: Shape {
 // ContentView.swift
 struct ContentView: View {
     @State private var userMessage: String = ""
-    @State private var aiAnswer: String = "Ask Longevity AI something to get started."
+    @State private var aiAnswer: String = "Ask The Longevity App something to get started."
     @State private var isLoading: Bool = false
     @State private var errorMessage: String? = nil
     
@@ -191,7 +191,7 @@ struct ContentView: View {
                         
                         // Main title text
                         VStack(spacing: 12) {
-                            Text("Longevity AI is ready.")
+                            Text("The Longevity App is ready.")
                                 .font(.system(size: 34, weight: .bold, design: .rounded))
                                 .foregroundColor(.white)
                                 .shadow(color: Color(red: 0.2, green: 0.5, blue: 0.35).opacity(0.6), radius: 12, x: 0, y: 0)
@@ -270,9 +270,9 @@ struct ContentView: View {
                     .padding(.top, 20)
                     .padding(.bottom, 30)
                     
-                    // Longevity AI response container
+                    // The Longevity App response container
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Longevity AI response")
+                        Text("The Longevity App response")
                             .font(.system(size: 14, weight: .semibold, design: .rounded))
                             .foregroundColor(Color(red: 0.7, green: 0.9, blue: 0.8))
                             .padding(.horizontal, 4)
@@ -362,74 +362,52 @@ struct ContentView: View {
     
     func sendMessageToLongevityAI() {
         guard !userMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        // ... (existing code for sending message) ...
-        let baseURL: URL = {
-            #if DEBUG
-            // Use 127.0.0.1 instead of localhost for iOS Simulator compatibility
-            return URL(string: "http://127.0.0.1:4000")!
-            #else
-            return URL(string: "https://api.yourproductiondomain.com")!
-            #endif
-        }()
-        let url = baseURL.appendingPathComponent("api").appendingPathComponent("chat")
         
         isLoading = true
         errorMessage = nil
         
-        let body: [String: Any] = [
-            "userId": "gizem-ios",
-            "message": userMessage
-        ]
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [])
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        // Use LongevityAPI.shared.sendChatMessage which handles auth token
+        LongevityAPI.shared.sendChatMessage(message: userMessage) { result in
             DispatchQueue.main.async {
                 self.isLoading = false
-            }
-            
-            if let error = error {
-                DispatchQueue.main.async {
+                
+                switch result {
+                case .success(let answer):
+                    self.aiAnswer = answer
+                    self.userMessage = ""
+                case .failure(let error):
                     self.errorMessage = error.localizedDescription
                 }
-                return
             }
-            
-            guard let data = data else {
-                DispatchQueue.main.async {
-                    self.errorMessage = "No data from server."
-                }
-                return
-            }
-            
-            do {
-                let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
-                DispatchQueue.main.async {
-                    self.aiAnswer = decoded.answer
-                    self.userMessage = ""
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self.errorMessage = "Failed to decode response."
-                }
-            }
-        }.resume()
+        }
     }
     
     private func processMarkdown(_ text: String) -> String {
         let lines = text.components(separatedBy: .newlines)
         let cleanedLines = lines.map { line -> String in
-            var l = line.trimmingCharacters(in: .whitespaces)
-            if l.hasPrefix("### ") {
-                l = "**" + l.replacingOccurrences(of: "### ", with: "") + "**"
-            } else if l.hasPrefix("## ") {
-                l = "**" + l.replacingOccurrences(of: "## ", with: "") + "**"
-            } else if l.hasPrefix("# ") {
-                l = "**" + l.replacingOccurrences(of: "# ", with: "") + "**"
+            var l = line
+            let trimmed = l.trimmingCharacters(in: .whitespaces)
+            
+            // Handle headers - only at start of line
+            if trimmed.hasPrefix("#### ") {
+                l = l.replacingOccurrences(of: trimmed, with: "**" + trimmed.replacingOccurrences(of: "#### ", with: "") + "**")
+            } else if trimmed.hasPrefix("### ") {
+                l = l.replacingOccurrences(of: trimmed, with: "**" + trimmed.replacingOccurrences(of: "### ", with: "") + "**")
+            } else if trimmed.hasPrefix("## ") {
+                l = l.replacingOccurrences(of: trimmed, with: "**" + trimmed.replacingOccurrences(of: "## ", with: "") + "**")
+            } else if trimmed.hasPrefix("# ") {
+                l = l.replacingOccurrences(of: trimmed, with: "**" + trimmed.replacingOccurrences(of: "# ", with: "") + "**")
             }
+            
+            // Handle bullet points - only at start of line after whitespace
+            if trimmed.hasPrefix("* ") && !trimmed.hasPrefix("**") {
+                let leadingWhitespace = String(l.prefix(l.count - trimmed.count))
+                l = leadingWhitespace + "• " + trimmed.replacingOccurrences(of: "* ", with: "")
+            } else if trimmed.hasPrefix("- ") {
+                let leadingWhitespace = String(l.prefix(l.count - trimmed.count))
+                l = leadingWhitespace + "• " + trimmed.replacingOccurrences(of: "- ", with: "")
+            }
+            
             return l
         }
         return cleanedLines.joined(separator: "\n")

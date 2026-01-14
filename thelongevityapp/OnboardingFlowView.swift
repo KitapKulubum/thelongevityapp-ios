@@ -36,7 +36,7 @@ struct OnboardingFlowView: View {
                 VStack {
                     Spacer()
                     VStack(spacing: 12) {
-                        Text("Longevity AI is ready.")
+                        Text("The Longevity App is ready.")
                             .font(.system(size: 20, weight: .medium))
                         Text("Let's optimize your healthspan.")
                             .font(.system(size: 20, weight: .medium))
@@ -102,20 +102,50 @@ struct OnboardingFlowView: View {
                     }
                     
                     onboardingQuestionOptions
+                        .id("onboarding-options")
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
                 // Add extra bottom space when input is disabled to avoid overlap
                 .padding(.bottom, viewModel.chatInputEnabled ? 0 : 80)
             }
-                    .disabled(viewModel.isChatDisabled)
-                    .onChange(of: viewModel.messages.count) {
-                        if let last = viewModel.messages.last {
-                            withAnimation {
-                                proxy.scrollTo(last.id, anchor: .bottom)
-                            }
+            .disabled(viewModel.isChatDisabled)
+            .onChange(of: viewModel.messages.count) {
+                // When new message is added, scroll to options (if in onboarding) or last message
+                if viewModel.mode == .onboarding {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        withAnimation {
+                            proxy.scrollTo("onboarding-options", anchor: .bottom)
                         }
                     }
+                } else if let last = viewModel.messages.last {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                }
+            }
+            .onChange(of: viewModel.currentOnboardingQuestionIndex) {
+                // When question index changes, scroll to options
+                if viewModel.mode == .onboarding {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        withAnimation {
+                            proxy.scrollTo("onboarding-options", anchor: .bottom)
+                        }
+                    }
+                }
+            }
+            .onAppear {
+                // Scroll to options on appear if in onboarding mode
+                if viewModel.mode == .onboarding {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        withAnimation {
+                            proxy.scrollTo("onboarding-options", anchor: .bottom)
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -155,10 +185,10 @@ struct OnboardingFlowView: View {
                 .padding(.vertical, 10)
                 .background(
                     Capsule()
-                        .fill(Color.green.opacity(0.2))
+                        .fill(Color.primaryGreen.opacity(0.2))
                         .overlay(
                             Capsule()
-                                .stroke(Color.green.opacity(0.4), lineWidth: 1)
+                                .stroke(Color.primaryGreen.opacity(0.4), lineWidth: 1)
                         )
                 )
             }

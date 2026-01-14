@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import FirebaseAuth
 
 final class LongevityAPI {
     static let shared = LongevityAPI()
@@ -143,24 +144,44 @@ final class LongevityAPI {
             return
         }
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                completion(.failure(error))
-                return
-            }
-            
-            guard let data = data else {
-                completion(.failure(NSError(domain: "LongevityAPI", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data"])))
-                return
-            }
-            
+        // Get auth token and add to request header
+        Task {
             do {
-                let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
-                completion(.success(decoded.answer))
+                let token = try await AuthManager.shared.getIDToken()
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                
+                URLSession.shared.dataTask(with: request) { data, response, error in
+                    if let error = error {
+                        completion(.failure(error))
+                        return
+                    }
+                    
+                    guard let httpResponse = response as? HTTPURLResponse else {
+                        completion(.failure(NSError(domain: "LongevityAPI", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])))
+                        return
+                    }
+                    
+                    guard httpResponse.statusCode == 200 else {
+                        completion(.failure(NSError(domain: "LongevityAPI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server returned status code \(httpResponse.statusCode)"])))
+                        return
+                    }
+                    
+                    guard let data = data else {
+                        completion(.failure(NSError(domain: "LongevityAPI", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data"])))
+                        return
+                    }
+                    
+                    do {
+                        let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
+                        completion(.success(decoded.answer))
+                    } catch {
+                        completion(.failure(error))
+                    }
+                }.resume()
             } catch {
                 completion(.failure(error))
             }
-        }.resume()
+        }
     }
     
     func fetchAgeState(userId: String, completion: @escaping (Result<AgeStateResponse, Error>) -> Void) {

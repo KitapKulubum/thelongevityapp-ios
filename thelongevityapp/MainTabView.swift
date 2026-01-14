@@ -103,8 +103,23 @@ struct MainTabView: View {
             }
         
         let withTodayChange = withAgingDebtChange
-            .onChange(of: appState.summary?.today?.score ?? 0, initial: false) { _, _ in
+            .onChange(of: appState.summaryUpdateTrigger, initial: false) { _, _ in
+                // Summary was updated (e.g., after daily check-in) - update scoreViewModel immediately
+                // This ensures Daily Δ reflects the latest deltaYears from daily-update response
                 updateScoreViewModel()
+                if let delta = appState.summary?.today?.deltaYears {
+                    print("[MainTabView] Summary update triggered, updating scoreViewModel with delta: \(delta)")
+                }
+            }
+            .onChange(of: appState.summary?.today?.date ?? "", initial: false) { _, _ in
+                // When today's date changes, it means a new check-in was completed
+                updateScoreViewModel()
+                print("[MainTabView] Today's date changed, updating scoreViewModel with delta: \(appState.summary?.today?.deltaYears ?? 0)")
+            }
+            .onChange(of: appState.summary?.today?.deltaYears ?? 0, initial: false) { oldValue, newValue in
+                // Ensure Daily Δ reflects latest daily-update response
+                updateScoreViewModel()
+                print("[MainTabView] Today's delta changed from \(oldValue) to \(newValue)")
             }
         
         return withTodayChange
@@ -815,6 +830,20 @@ struct LongevityTrendView: View {
     @StateObject private var deltaViewModel = DeltaAnalyticsViewModel()
     @State private var selectedRange: TrendRange = .weekly
     
+    // MARK: - Helper Functions
+    private func helperText(for delta: Double) -> String {
+        let sign = delta < 0 ? "−" : (delta > 0 ? "+" : "")
+        let value = String(format: "%.2f", abs(delta))
+        
+        if delta < 0 {
+            return "Today's Δ: \(sign)\(value) years (you got younger today)"
+        } else if delta > 0 {
+            return "Today's Δ: \(sign)\(value) years"
+        } else {
+            return "Today's Δ: 0.00 years"
+        }
+    }
+    
     // Design tokens
     private let screenPadding: CGFloat = 20
     private let sectionSpacing: CGFloat = 24
@@ -1039,6 +1068,8 @@ struct LongevityTrendView: View {
         let withBiologicalAgeChange = configuredZStack
             .onChange(of: appState.summary?.state.currentBiologicalAgeYears ?? appState.summary?.state.chronologicalAgeYears ?? 0, initial: false) { _, _ in
                 updateScoreFromSummary()
+                // Refresh delta analytics when summary changes (e.g., after daily check-in)
+                deltaViewModel.loadData(range: selectedRange.rawValue)
             }
         
         let withAgingDebtChange = withBiologicalAgeChange
@@ -1049,6 +1080,8 @@ struct LongevityTrendView: View {
         return withAgingDebtChange
             .onChange(of: appState.summary?.today?.score ?? 0, initial: false) { _, _ in
                 updateScoreFromSummary()
+                // Refresh delta analytics when today's score changes (e.g., after daily check-in)
+                deltaViewModel.loadData(range: selectedRange.rawValue)
             }
     }
     
@@ -1070,30 +1103,6 @@ struct LongevityTrendView: View {
                 
                 // 2. Hero Section - Biological Age (dominant, centered)
                 heroBiologicalAge
-                .padding(.horizontal, screenPadding)
-                .padding(.bottom, 28)
-                
-                // 3. Context Row (Aging Debt / Today Δ) - subtle
-                VStack(spacing: 8) {
-                    contextMetricsRow()
-                    
-                    // Helper text about daily change
-                    if let todayDelta = scoreViewModel.todayDeltaYears {
-                        let helperText: String
-                        if todayDelta < -0.5 {
-                            helperText = "Today's Δ: \(String(format: "%.2f", abs(todayDelta))) years (you got younger today)"
-                        } else if todayDelta > 0.5 {
-                            helperText = "Today's Δ: +\(String(format: "%.2f", abs(todayDelta))) years"
-                        } else {
-                            helperText = "Today's Δ: minimal change"
-                        }
-                        Text(helperText)
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(.white.opacity(0.4))
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                    }
-                }
                 .padding(.horizontal, screenPadding)
                 .padding(.bottom, 36)
                 
@@ -1198,48 +1207,6 @@ struct LongevityTrendView: View {
         }
     }
     
-    // MARK: - Context Metrics Row (subtle, below hero)
-    @ViewBuilder
-    private func contextMetricsRow() -> some View {
-        // Calculate color states based on aging debt and today delta
-        // Aging debt = biologicalAge - chronologicalAge (same as diff)
-        let agingDebtColorState = colorForBiologicalAge(
-            biologicalAge: scoreViewModel.biologicalAgeYears,
-            chronologicalAge: scoreViewModel.chronologicalAgeYears
-        )
-        
-        // Today delta: negative = rejuvenation, positive = aging, near zero = neutral
-        let todayDelta = scoreViewModel.todayDeltaYears ?? 0
-        let todayDeltaColorState: BiologicalAgeColorState = {
-            if todayDelta < -0.5 {
-                return .positive
-            } else if abs(todayDelta) <= 0.5 {
-                return .neutral
-            } else {
-                return .attention
-            }
-        }()
-        
-        HStack(spacing: 32) {
-            MetricCard(
-                title: "AGING DEBT",
-                value: String(format: "%.2fy", abs(scoreViewModel.agingDebtYears)),
-                colorState: agingDebtColorState,
-                tooltipText: "The difference between your biological age and chronological age. Positive values indicate your body is aging faster than your calendar age."
-            )
-            
-            MetricCard(
-                title: "DAILY Δ",
-                value: {
-                    let sign = todayDelta < 0 ? "−" : (todayDelta > 0 ? "+" : "")
-                    return "\(sign)\(String(format: "%.2f", abs(todayDelta)))y"
-                }(),
-                colorState: todayDeltaColorState
-            )
-            
-            Spacer()
-        }
-    }
     
     // MARK: - Calm Streak Section (reward style, not CTA)
     @ViewBuilder
@@ -1788,6 +1755,7 @@ struct ProfileView: View {
     @State private var showTerms: Bool = false
     @State private var showPrivacy: Bool = false
     @State private var showNotifications: Bool = false
+    @State private var showMembershipDetail: Bool = false
     @State private var contentOffset: CGFloat = 0
     @State private var isDeletePressed: Bool = false
     @State private var isEmailVerificationBannerDismissed: Bool = false
@@ -1840,32 +1808,38 @@ struct ProfileView: View {
                     .padding(.top, 16)
                     .padding(.bottom, 32)
                     
-                    // Membership Card (Primary) - Show first for prominence
-                    membershipCard
-                        .padding(.horizontal, cardPadding)
-                        .padding(.bottom, cardSpacing)
-                    
-                    // Email Verification Banner (if needed) - Moved below membership
+                    // Email Verification Banner (High Priority - Top)
                     if !authManager.isEmailVerified && !isEmailVerificationBannerDismissed {
-                        emailVerificationBanner
+                        emailVerificationAlertBanner
                             .padding(.horizontal, cardPadding)
                             .padding(.bottom, cardSpacing)
                     }
                     
-                    // Language Card (Secondary)
-                    languageCard
-                        .padding(.horizontal, cardPadding)
-                        .padding(.bottom, cardSpacing)
-                    
-                    // Notifications Section
-                    notificationsSection
-                        .padding(.horizontal, cardPadding)
-                        .padding(.bottom, cardSpacing)
-                    
-                    // Legal Section (Low emphasis)
-                    legalSection
-                        .padding(.horizontal, cardPadding)
-                        .padding(.bottom, cardSpacing * 2)
+                    // Settings List
+                    VStack(spacing: 0) {
+                        // Membership (Settings item)
+                        membershipSettingsItem
+                        
+                        Divider()
+                            .background(Color.white.opacity(0.1))
+                        
+                        // Language
+                        languageCard
+                        
+                        Divider()
+                            .background(Color.white.opacity(0.1))
+                        
+                        // Notifications
+                        notificationsSection
+                        
+                        Divider()
+                            .background(Color.white.opacity(0.1))
+                        
+                        // Legal Section
+                        legalSection
+                    }
+                    .padding(.horizontal, cardPadding)
+                    .padding(.bottom, cardSpacing * 2)
                     
                     // Account Actions (Bottom, de-emphasized)
                     accountActions
@@ -1904,6 +1878,10 @@ struct ProfileView: View {
             // Reload user to refresh email verification status
             Task {
                 try? await authManager.reloadUser()
+                // If email is now verified, hide banner permanently
+                if authManager.isEmailVerified {
+                    isEmailVerificationBannerDismissed = true
+                }
                 // Load subscription status
                 await subscriptionManager.loadSubscriptionStatus()
             }
@@ -1924,105 +1902,56 @@ struct ProfileView: View {
         .sheet(isPresented: $showNotifications) {
             NotificationSettingsView()
         }
-    }
-    
-    // MARK: - Membership Card (Primary, visually dominant)
-    private var membershipCard: some View {
-        MinimalCard(elevated: true) {
-            VStack(alignment: .leading, spacing: 20) {
-                // Title Section
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Membership")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
-                    
-                    Text("Longevity Premium")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.white)
-                    
-                    // Status Line (dynamic)
-                    Text(subscriptionManager.subscriptionStatus.displayText)
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.white.opacity(0.6))
-                }
-                
-                // Benefits List (read-only, no upsell tone)
-                VStack(alignment: .leading, spacing: 10) {
-                    membershipBenefitRow(text: "Biological age tracking")
-                    membershipBenefitRow(text: "Weekly & monthly insights")
-                    membershipBenefitRow(text: "AI-powered interpretations")
-                }
-                .padding(.top, 4)
-                
-                // Info Badge (optional, subtle)
-                HStack(spacing: 6) {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(.white.opacity(0.4))
-                    Text("Subscriptions are handled securely through your Apple ID.")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(.white.opacity(0.4))
-                }
-                .padding(.top, 4)
-                
-                // Primary Action Button
-                Button(action: {
-                    let impact = UIImpactFeedbackGenerator(style: .light)
-                    impact.impactOccurred()
-                    subscriptionManager.openSubscriptionManagement()
-                }) {
-                    HStack {
-                        Spacer()
-                        Text(subscriptionManager.subscriptionStatus == .inactive ? "View subscription options" : "Manage subscription")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.black)
-                        Spacer()
-                    }
-                    .padding(.vertical, 14)
-                    .background(
-                        Capsule()
-                            .fill(Color.primaryGreen)
-                    )
-                }
-                .padding(.top, 8)
-                
-                // Microcopy under button
-                Text("You'll be redirected to Apple's subscription settings.")
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundColor(.white.opacity(0.4))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 4)
-            }
-            .padding(24)
+        .sheet(isPresented: $showMembershipDetail) {
+            MembershipDetailView()
         }
-        .overlay(
-            // Subtle glow effect
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            Color.primaryGreen.opacity(0.2),
-                            Color.primaryGreen.opacity(0.0)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-        )
     }
     
-    private func membershipBenefitRow(text: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "checkmark")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(Color.primaryGreen)
-                .frame(width: 16)
-            
-            Text(text)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundColor(.white.opacity(0.8))
+    // MARK: - Helper Functions
+    private func helperText(for delta: Double) -> String {
+        if delta < -0.5 {
+            return "Today's Δ: \(String(format: "%.2f", abs(delta))) years (you got younger today)"
+        } else if delta > 0.5 {
+            return "Today's Δ: +\(String(format: "%.2f", abs(delta))) years"
+        } else {
+            return "Today's Δ: minimal change"
+        }
+    }
+    
+    // MARK: - Membership Settings Item
+    private var membershipSettingsItem: some View {
+        MinimalCard {
+            Button(action: {
+                showMembershipDetail = true
+            }) {
+                HStack(spacing: 12) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(.white.opacity(0.4))
+                        .frame(width: 16)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Membership")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                        
+                        Text("Longevity Premium")
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.white.opacity(0.5))
+                        
+                        Text("Active · Managed by Apple")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.3))
+                }
+                .padding(20)
+            }
         }
     }
     
@@ -2091,88 +2020,118 @@ struct ProfileView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "bell")
                         .font(.system(size: 14, weight: .regular))
-                        .foregroundColor(.white.opacity(0.3))
+                        .foregroundColor(.white.opacity(0.4))
                         .frame(width: 16)
                     
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("Notifications")
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(.white.opacity(0.5))
-                        
-                        Text("Daily reminders · Insight alerts")
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(.white.opacity(0.4))
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
                     }
                     
                     Spacer()
-                    
-                    // Status indicator
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(notificationManager.authorizationStatus == .authorized ? Color.primaryGreen : Color.white.opacity(0.3))
-                            .frame(width: 6, height: 6)
-                        
-                        Text(notificationManager.authorizationStatus == .authorized ? "On" : "Off")
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(.white.opacity(0.4))
-                    }
                     
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.3))
                 }
-                .padding(.vertical, 14)
-                .padding(.horizontal, 4)
+                .padding(20)
             }
         }
     }
     
-    // MARK: - Legal Section (Low emphasis)
+    // MARK: - Legal Section (Settings list format)
     private var legalSection: some View {
-        MinimalCard {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
+            MinimalCard {
                 Button(action: { showTerms = true }) {
                     HStack(spacing: 12) {
                         Image(systemName: "doc.text")
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(.white.opacity(0.25))
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.white.opacity(0.4))
                             .frame(width: 16)
                         
                         Text("Terms of Service")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(.white.opacity(0.4))
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
                         
                         Spacer()
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.3))
                     }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 4)
+                    .padding(20)
                 }
-                
-                Divider()
-                    .background(Color.white.opacity(0.08))
-                    .padding(.leading, 32)
-                
+            }
+            
+            Divider()
+                .background(Color.white.opacity(0.1))
+            
+            MinimalCard {
                 Button(action: { showPrivacy = true }) {
                     HStack(spacing: 12) {
                         Image(systemName: "lock.shield")
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(.white.opacity(0.25))
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.white.opacity(0.4))
                             .frame(width: 16)
                         
                         Text("Privacy Policy")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(.white.opacity(0.4))
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
                         
                         Spacer()
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.3))
                     }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 4)
+                    .padding(20)
                 }
             }
         }
     }
     
-    // MARK: - Email Verification Banner
+    // MARK: - Email Verification Alert Banner (High Priority)
+    private var emailVerificationAlertBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "envelope.badge.fill")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(Color.primaryGreen)
+                .frame(width: 20)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Verify your email")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                
+                Text("Secure your account and data")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            
+            Spacer()
+            
+            Button {
+                isEmailVerificationBannerDismissed = true
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.primaryGreen.opacity(0.3), lineWidth: 1)
+                )
+        )
+    }
+    
+    // MARK: - Email Verification Banner (Old format - kept for reference)
     private var emailVerificationBanner: some View {
         HStack(spacing: 10) {
             Image(systemName: "envelope.badge")
@@ -3211,10 +3170,16 @@ struct DeltaChartView: View {
                 DeltaChartErrorView(message: error)
                     .frame(height: 200)
             } else if range == "yearly" {
-                YearlyDeltaChartView(points: viewModel.monthlyPoints)
+                YearlyDeltaChartView(
+                    points: viewModel.monthlyPoints,
+                    summary: viewModel.yearlySummary
+                )
                     .frame(height: 200)
             } else {
-                DailyDeltaChartView(points: viewModel.dailyPoints)
+                DailyDeltaChartView(
+                    points: viewModel.dailyPoints,
+                    summary: viewModel.dailySummary
+                )
                     .frame(height: 200)
             }
         }
@@ -3226,17 +3191,78 @@ struct DeltaChartView: View {
 
 struct DailyDeltaChartView: View {
     let points: [DeltaDailyPoint]
+    let summary: DeltaSummary?
     @StateObject private var languageManager = LanguageManager.shared
     
+    // Check if there's any valid data (non-null dailyDeltaYears or checkIns > 0)
+    private var hasNoData: Bool {
+        if let summary = summary, summary.checkIns > 0 {
+            return false
+        }
+        // Check if all points have null dailyDeltaYears
+        return points.allSatisfy { $0.dailyDeltaYears == nil }
+    }
+    
     var body: some View {
-        if points.isEmpty {
-            VStack {
-                Text("No data available")
-                    .font(.system(size: 12))
+        if points.isEmpty || hasNoData {
+            VStack(spacing: 8) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.system(size: 24))
+                    .foregroundColor(.white.opacity(0.4))
+                Text("Complete your first daily check-in to see your progress here")
+                    .font(.system(size: 14, weight: .regular))
                     .foregroundColor(.white.opacity(0.6))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
+            // Get valid points (non-nil delta values)
+            let validPoints = points.compactMap { point -> (date: Date, delta: Double)? in
+                guard let delta = point.dailyDeltaYears else { return nil }
+                return (parseDate(point.date), delta)
+            }
+            
+            // Get valid dates for X axis (even if delta is nil, we want to show the date)
+            let validDates = points.map { parseDate($0.date) }
+            
+            // Calculate Y axis domain to ensure visibility even with single point
+            let yMin: Double
+            let yMax: Double
+            if validPoints.isEmpty {
+                yMin = -1.0
+                yMax = 1.0
+            } else if validPoints.count == 1 {
+                // Single point: create symmetric range around the value
+                let singleValue = validPoints[0].delta
+                let padding = max(abs(singleValue) * 0.3, 0.5)
+                yMin = singleValue - padding
+                yMax = singleValue + padding
+            } else {
+                // Multiple points: use actual min/max with padding
+                let deltas = validPoints.map { $0.delta }
+                let minDelta = deltas.min() ?? 0
+                let maxDelta = deltas.max() ?? 0
+                let padding = max((maxDelta - minDelta) * 0.2, 0.5)
+                yMin = minDelta - padding
+                yMax = maxDelta + padding
+            }
+            
+            // For X axis: if only one date, add padding dates to ensure axis visibility
+            let xAxisDates: [Date]
+            if validDates.count == 1, let singleDate = validDates.first {
+                // Add dates before and after to ensure axis is visible
+                let calendar = Calendar.current
+                if let dayBefore = calendar.date(byAdding: .day, value: -1, to: singleDate),
+                   let dayAfter = calendar.date(byAdding: .day, value: 1, to: singleDate) {
+                    xAxisDates = [dayBefore, singleDate, dayAfter]
+                } else {
+                    xAxisDates = validDates
+                }
+            } else {
+                xAxisDates = validDates
+            }
+            
             Chart {
                 let firstValidIndex = points.firstIndex { $0.dailyDeltaYears != nil }
                 
@@ -3283,8 +3309,10 @@ struct DailyDeltaChartView: View {
                     .foregroundStyle(.white.opacity(0.15))
                     .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
             }
+            .chartYScale(domain: yMin...yMax)
+            .chartXScale(domain: xAxisDates.first!...xAxisDates.last!)
             .chartXAxis {
-                AxisMarks(values: .automatic) { value in
+                AxisMarks(values: .stride(by: .day, count: max(1, xAxisDates.count / 5))) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                         .foregroundStyle(.white.opacity(0.1))
                     if let date = value.as(Date.self) {
@@ -3297,7 +3325,7 @@ struct DailyDeltaChartView: View {
                 }
             }
             .chartYAxis {
-                AxisMarks(position: .leading) { value in
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                         .foregroundStyle(.white.opacity(0.1))
                     AxisValueLabel()
@@ -3329,14 +3357,29 @@ struct DailyDeltaChartView: View {
 
 struct YearlyDeltaChartView: View {
     let points: [DeltaMonthlyPoint]
+    let summary: DeltaSummary?
     @StateObject private var languageManager = LanguageManager.shared
     
+    // Check if there's any valid data (checkIns > 0)
+    private var hasNoData: Bool {
+        if let summary = summary, summary.checkIns > 0 {
+            return false
+        }
+        // Check if all points have 0 checkIns
+        return points.allSatisfy { $0.checkIns == 0 }
+    }
+    
     var body: some View {
-        if points.isEmpty {
-            VStack {
-                Text("No data available")
-                    .font(.system(size: 12))
+        if points.isEmpty || hasNoData {
+            VStack(spacing: 8) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.system(size: 24))
+                    .foregroundColor(.white.opacity(0.4))
+                Text("Complete your first daily check-in to see your progress here")
+                    .font(.system(size: 14, weight: .regular))
                     .foregroundColor(.white.opacity(0.6))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {

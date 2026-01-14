@@ -3203,6 +3203,72 @@ struct DailyDeltaChartView: View {
         return points.allSatisfy { $0.dailyDeltaYears == nil }
     }
     
+    // Get valid points (non-nil delta values)
+    private var validPoints: [(date: Date, delta: Double)] {
+        points.compactMap { point -> (date: Date, delta: Double)? in
+            guard let delta = point.dailyDeltaYears else { return nil }
+            return (parseDate(point.date), delta)
+        }
+    }
+    
+    // Get valid dates for X axis (even if delta is nil, we want to show the date)
+    private var validDates: [Date] {
+        points.map { parseDate($0.date) }
+    }
+    
+    // Calculate Y axis domain to ensure visibility even with single point
+    private var yMin: Double {
+        if validPoints.isEmpty {
+            return -1.0
+        } else if validPoints.count == 1 {
+            // Single point: create symmetric range around the value
+            let singleValue = validPoints[0].delta
+            let padding = max(abs(singleValue) * 0.3, 0.5)
+            return singleValue - padding
+        } else {
+            // Multiple points: use actual min/max with padding
+            let deltas = validPoints.map { $0.delta }
+            let minDelta = deltas.min() ?? 0
+            let maxDelta = deltas.max() ?? 0
+            let padding = max((maxDelta - minDelta) * 0.2, 0.5)
+            return minDelta - padding
+        }
+    }
+    
+    private var yMax: Double {
+        if validPoints.isEmpty {
+            return 1.0
+        } else if validPoints.count == 1 {
+            // Single point: create symmetric range around the value
+            let singleValue = validPoints[0].delta
+            let padding = max(abs(singleValue) * 0.3, 0.5)
+            return singleValue + padding
+        } else {
+            // Multiple points: use actual min/max with padding
+            let deltas = validPoints.map { $0.delta }
+            let minDelta = deltas.min() ?? 0
+            let maxDelta = deltas.max() ?? 0
+            let padding = max((maxDelta - minDelta) * 0.2, 0.5)
+            return maxDelta + padding
+        }
+    }
+    
+    // For X axis: if only one date, add padding dates to ensure axis visibility
+    private var xAxisDates: [Date] {
+        if validDates.count == 1, let singleDate = validDates.first {
+            // Add dates before and after to ensure axis is visible
+            let calendar = Calendar.current
+            if let dayBefore = calendar.date(byAdding: .day, value: -1, to: singleDate),
+               let dayAfter = calendar.date(byAdding: .day, value: 1, to: singleDate) {
+                return [dayBefore, singleDate, dayAfter]
+            } else {
+                return validDates
+            }
+        } else {
+            return validDates
+        }
+    }
+    
     var body: some View {
         if points.isEmpty || hasNoData {
             VStack(spacing: 8) {
@@ -3217,52 +3283,6 @@ struct DailyDeltaChartView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            // Get valid points (non-nil delta values)
-            let validPoints = points.compactMap { point -> (date: Date, delta: Double)? in
-                guard let delta = point.dailyDeltaYears else { return nil }
-                return (parseDate(point.date), delta)
-            }
-            
-            // Get valid dates for X axis (even if delta is nil, we want to show the date)
-            let validDates = points.map { parseDate($0.date) }
-            
-            // Calculate Y axis domain to ensure visibility even with single point
-            let yMin: Double
-            let yMax: Double
-            if validPoints.isEmpty {
-                yMin = -1.0
-                yMax = 1.0
-            } else if validPoints.count == 1 {
-                // Single point: create symmetric range around the value
-                let singleValue = validPoints[0].delta
-                let padding = max(abs(singleValue) * 0.3, 0.5)
-                yMin = singleValue - padding
-                yMax = singleValue + padding
-            } else {
-                // Multiple points: use actual min/max with padding
-                let deltas = validPoints.map { $0.delta }
-                let minDelta = deltas.min() ?? 0
-                let maxDelta = deltas.max() ?? 0
-                let padding = max((maxDelta - minDelta) * 0.2, 0.5)
-                yMin = minDelta - padding
-                yMax = maxDelta + padding
-            }
-            
-            // For X axis: if only one date, add padding dates to ensure axis visibility
-            let xAxisDates: [Date]
-            if validDates.count == 1, let singleDate = validDates.first {
-                // Add dates before and after to ensure axis is visible
-                let calendar = Calendar.current
-                if let dayBefore = calendar.date(byAdding: .day, value: -1, to: singleDate),
-                   let dayAfter = calendar.date(byAdding: .day, value: 1, to: singleDate) {
-                    xAxisDates = [dayBefore, singleDate, dayAfter]
-                } else {
-                    xAxisDates = validDates
-                }
-            } else {
-                xAxisDates = validDates
-            }
-            
             Chart {
                 let firstValidIndex = points.firstIndex { $0.dailyDeltaYears != nil }
                 

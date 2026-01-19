@@ -177,7 +177,29 @@ class AppState: ObservableObject {
         subscriptionStatus = .active
         
         // Fetch fresh summary from backend (requires auth token)
+        // Ensure token is available before making the request
         do {
+            // Pre-check token availability with retry (increased retries and delay)
+            var token: String?
+            var retryCount = 0
+            while token == nil && retryCount < 5 {
+                do {
+                    token = try await AuthManager.shared.getIDToken()
+                    print("[AppState] Token obtained successfully on attempt \(retryCount + 1)")
+                } catch {
+                    retryCount += 1
+                    if retryCount < 5 {
+                        // Wait a bit before retry (increasing delay)
+                        let delay = UInt64(200_000_000 * retryCount) // 0.2s, 0.4s, 0.6s, 0.8s
+                        try await Task.sleep(nanoseconds: delay)
+                        print("[AppState] Token fetch failed, retrying (\(retryCount)/5)... Error: \(error)")
+                    } else {
+                        print("[AppState] Token fetch failed after 5 retries: \(error)")
+                        throw error
+                    }
+                }
+            }
+            
             let freshSummary = try await APIClient.shared.getSummary()
             userId = freshSummary.userId
             summary = freshSummary
@@ -198,6 +220,29 @@ class AppState: ObservableObject {
             }
         } catch let error as APIError {
             print("[AppState] Failed to fetch summary: \(error)")
+            
+            // If it's a subscription required error (403 with subscription_required), use cached data and allow onboarding
+            if case .httpError(_, let statusCode, let responseBody) = error {
+                if statusCode == 403 {
+                    let lowercased = responseBody.lowercased()
+                    if lowercased.contains("subscription_required") || 
+                       lowercased.contains("subscription required") ||
+                       lowercased.contains("\"code\":\"subscription_required\"") {
+                        print("[AppState] Subscription required during bootstrap, using cached data and allowing onboarding")
+                        // Keep existing cached summary if available, allow onboarding
+                        return
+                    }
+                }
+            }
+            
+            // If it's a missingAuthToken error and backend is not required, use cached data
+            if case .missingAuthToken = error {
+                if !requireBackend {
+                    print("[AppState] Missing auth token during bootstrap, using cached data")
+                    // Keep existing cached summary if available
+                    return
+                }
+            }
             
             // If it's a network/timeout error and backend is not required, use cached data
             if case .networkError = error {
@@ -278,19 +323,9 @@ class AppState: ObservableObject {
     }
     
     func updateSubscriptionStatus(from response: AuthProfileResponse) {
-        if let subscription = response.subscription,
-           let status = subscription.status {
-            switch status.lowercased() {
-            case "active":
-                self.subscriptionStatus = .active
-            case "expired":
-                self.subscriptionStatus = .expired
-            default:
-                self.subscriptionStatus = .inactive
-            }
-        } else {
-            self.subscriptionStatus = .inactive
-        }
+        // TODO: Subscription status will be updated when backend adds subscription field to AuthProfileResponse
+        // For now, keep current status or set to inactive
+        self.subscriptionStatus = .inactive
     }
 }
 

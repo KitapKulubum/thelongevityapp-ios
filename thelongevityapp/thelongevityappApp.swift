@@ -32,11 +32,14 @@ struct thelongevityappApp: App {
 struct RootView: View {
     @StateObject private var authManager = AuthManager.shared
     @StateObject private var appState: AppState
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
     @State private var isBootstrapComplete = false
     @State private var authError: String?
     @State private var authErrorTitle: String = "Login Failed"
     @State private var isAuthenticating = false
     @State private var showSplash = true
+    @State private var showPaywall = false
+    @State private var isCheckingSubscription = false
     
     init() {
         let userId = AuthManager.shared.uid ?? ""
@@ -163,6 +166,10 @@ struct RootView: View {
                         }
                     }
                 }
+            } else if showPaywall {
+                // Show paywall if subscription is required
+                PaywallView()
+                    .environmentObject(appState)
             } else {
                 // Always show MainTabView - onboarding will be handled within AI screen
                 MainTabView()
@@ -170,6 +177,12 @@ struct RootView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SubscriptionActivated"))) { _ in
+            // When subscription is activated, check status and hide paywall
+            Task {
+                await checkSubscriptionStatus()
+            }
+        }
         .onChange(of: authManager.currentUser) { oldValue, newValue in
             // When user logs out (currentUser becomes nil), reset bootstrap state
             if newValue == nil && oldValue != nil {
@@ -261,11 +274,55 @@ struct RootView: View {
             
             // Step 5: Bootstrap app state (require backend during login)
             // But allow 404 "Complete onboarding first" and missingAuthToken to pass through
+            // Ensure token is ready before bootstrap
             do {
+                // Pre-fetch token to ensure it's ready (with retry)
+                // Note: We already have a token from postAuthMe, but we need to ensure it's still valid
+                var tokenReady = false
+                var retryCount = 0
+                while !tokenReady && retryCount < 5 {
+                    do {
+                        // Check if user is still authenticated
+                        guard authManager.currentUser != nil else {
+                            throw APIError.missingAuthToken
+                        }
+                        _ = try await authManager.getIDToken()
+                        tokenReady = true
+                    } catch {
+                        retryCount += 1
+                        if retryCount < 5 {
+                            // Wait a bit before retry (increasing delay)
+                            try await Task.sleep(nanoseconds: UInt64(200_000_000 * retryCount)) // 0.2s, 0.4s, 0.6s, 0.8s
+                            print("[RootView] Token not ready, retrying (\(retryCount)/5)... Error: \(error)")
+                        } else {
+                            print("[RootView] Token fetch failed after 5 retries: \(error)")
+                            // If token fetch fails but user is authenticated, allow onboarding anyway
+                            if authManager.currentUser != nil {
+                                print("[RootView] User is authenticated but token fetch failed, allowing onboarding")
+                                await MainActor.run {
+                                    if let onboardingStatus = hasCompletedOnboarding {
+                                        appState.setOnboardingStatus(onboardingStatus)
+                                    } else {
+                                        appState.setOnboardingStatus(false)
+                                    }
+                                    isBootstrapComplete = true
+                                }
+                                return
+                            }
+                            throw error
+                        }
+                    }
+                }
                 try await appState.bootstrap(requireBackend: true)
+                
+                // Bootstrap successful - check subscription status
+                await checkSubscriptionStatus()
                 
                 // Bootstrap successful - onboarding status already set from postAuthMe response
                 // No need to override it here
+                await MainActor.run {
+                    isBootstrapComplete = true
+                }
             } catch {
                 print("[RootView] Bootstrap error during login: \(error)")
                 // Check if it's a 404 "Complete onboarding first" - this is normal for new users
@@ -299,6 +356,25 @@ struct RootView: View {
                         }
                         // Complete bootstrap in the same update cycle
                         isBootstrapComplete = true
+                    }
+                    return
+                } else if isSubscriptionRequiredError(error) {
+                    // Subscription required - show paywall
+                    // Use onboarding status from postAuthMe if available, otherwise set to false
+                    print("[RootView] Subscription required, showing paywall (login)")
+                    await MainActor.run {
+                        // Set onboarding flag to false FIRST, then complete bootstrap
+                        // This ensures view renders onboarding screen immediately
+                        if let onboardingStatus = hasCompletedOnboarding {
+                            appState.setOnboardingStatus(onboardingStatus)
+                        } else {
+                            appState.setOnboardingStatus(false)
+                        }
+                        // Complete bootstrap in the same update cycle
+                        isBootstrapComplete = true
+                        // Show paywall
+                        showPaywall = true
+                        appState.subscriptionStatus = .inactive
                     }
                     return
                 } else if isInvalidResponseError(error) {
@@ -351,6 +427,9 @@ struct RootView: View {
             await MainActor.run {
                 isBootstrapComplete = true
             }
+            
+            // Check subscription status after successful bootstrap
+            await checkSubscriptionStatus()
         } catch {
             // If Firebase auth succeeded but backend failed, check error type
             if firebaseAuthSucceeded {
@@ -376,7 +455,19 @@ struct RootView: View {
                     return
                 }
                 
+                // Check if it's a subscription required error (403 with subscription_required)
+                if isSubscriptionRequiredError(error) {
+                    // Subscription required - allow onboarding/continue, don't logout
+                    print("[RootView] Subscription required, allowing onboarding")
+                    await MainActor.run {
+                        isBootstrapComplete = true
+                        isAuthenticating = false
+                    }
+                    return
+                }
+                
                 // Check if it's an authentication error (401, 403) - these should logout
+                // Note: 403 subscription errors are handled above
                 let isAuthError = isAuthenticationError(error)
                 
                 if isAuthError {
@@ -517,9 +608,20 @@ struct RootView: View {
     private func isAuthenticationError(_ error: Error) -> Bool {
         if let apiError = error as? APIError {
             switch apiError {
-            case .httpError(_, let statusCode, _):
-                // Authentication errors: 401 (Unauthorized), 403 (Forbidden)
-                return statusCode == 401 || statusCode == 403
+            case .httpError(_, let statusCode, let responseBody):
+                // Authentication errors: 401 (Unauthorized), 403 (Forbidden) but NOT subscription errors
+                if statusCode == 401 {
+                    return true
+                }
+                if statusCode == 403 {
+                    // Only treat as auth error if it's NOT a subscription error
+                    let lowercased = responseBody.lowercased()
+                    let isSubscriptionError = lowercased.contains("subscription_required") || 
+                                             lowercased.contains("subscription required") ||
+                                             lowercased.contains("\"code\":\"subscription_required\"")
+                    return !isSubscriptionError
+                }
+                return false
             default:
                 return false
             }
@@ -555,6 +657,25 @@ struct RootView: View {
             switch apiError {
             case .missingAuthToken:
                 return true
+            default:
+                return false
+            }
+        }
+        return false
+    }
+    
+    private func isSubscriptionRequiredError(_ error: Error) -> Bool {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .httpError(_, let statusCode, let responseBody):
+                // Subscription required: 403 with subscription_required message
+                if statusCode == 403 {
+                    let lowercased = responseBody.lowercased()
+                    return lowercased.contains("subscription_required") || 
+                           lowercased.contains("subscription required") ||
+                           lowercased.contains("\"code\":\"subscription_required\"")
+                }
+                return false
             default:
                 return false
             }
@@ -615,5 +736,60 @@ struct RootView: View {
             return networkErrorCodes.contains(nsError.code)
         }
         return false
+    }
+    
+    private func checkSubscriptionStatus() async {
+        await MainActor.run {
+            isCheckingSubscription = true
+        }
+        
+        do {
+            // Load subscription status from backend
+            await subscriptionManager.loadSubscriptionStatus()
+            
+            // Check if subscription is active
+            let hasActiveSubscription = subscriptionManager.subscriptionStatus == .active || subscriptionManager.subscriptionStatus == .trial
+            
+            await MainActor.run {
+                if hasActiveSubscription {
+                    // Subscription is active, update AppState and proceed
+                    appState.subscriptionStatus = .active
+                    showPaywall = false
+                    print("[RootView] Subscription is active, proceeding to app")
+                } else {
+                    // No active subscription, show paywall
+                    appState.subscriptionStatus = .inactive
+                    showPaywall = true
+                    print("[RootView] No active subscription, showing paywall")
+                }
+                isCheckingSubscription = false
+            }
+        } catch {
+            print("[RootView] Failed to check subscription status: \(error)")
+            // On error, check if it's a subscription required error
+            if let apiError = error as? APIError,
+               case .httpError(_, let statusCode, let responseBody) = apiError,
+               statusCode == 403 {
+                let lowercased = responseBody.lowercased()
+                if lowercased.contains("subscription_required") || 
+                   lowercased.contains("subscription required") ||
+                   lowercased.contains("\"code\":\"subscription_required\"") {
+                    await MainActor.run {
+                        appState.subscriptionStatus = .inactive
+                        showPaywall = true
+                        isCheckingSubscription = false
+                        print("[RootView] Subscription required error, showing paywall")
+                    }
+                    return
+                }
+            }
+            // On other errors, allow access (graceful degradation)
+            await MainActor.run {
+                appState.subscriptionStatus = .unknown
+                showPaywall = false
+                isCheckingSubscription = false
+                print("[RootView] Subscription check failed, allowing access")
+            }
+        }
     }
 }

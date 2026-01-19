@@ -40,9 +40,7 @@ final class AgeViewModel: ObservableObject {
                 currentBiologicalAgeYears: response.state.currentBiologicalAgeYears,
                 agingDebtYears: response.state.agingDebtYears,
                 rejuvenationStreakDays: response.state.rejuvenationStreakDays,
-                accelerationStreakDays: response.state.accelerationStreakDays,
-                totalRejuvenationDays: response.state.totalRejuvenationDays,
-                totalAccelerationDays: response.state.totalAccelerationDays
+                totalRejuvenationDays: response.state.totalRejuvenationDays
             )
             // Note: today is no longer in the new response structure
             today = nil

@@ -59,9 +59,7 @@ struct TrendResponse: Decodable {
         let currentBiologicalAgeYears: Double
         let agingDebtYears: Double
         let rejuvenationStreakDays: Int
-        let accelerationStreakDays: Int
         let totalRejuvenationDays: Int
-        let totalAccelerationDays: Int
     }
 }
 
@@ -97,9 +95,7 @@ struct BiologicalAgeState: Codable, Equatable {
     let currentBiologicalAgeYears: Double?    // Optional for new users who haven't completed onboarding
     let agingDebtYears: Double
     let rejuvenationStreakDays: Int
-    let accelerationStreakDays: Int
     let totalRejuvenationDays: Int
-    let totalAccelerationDays: Int
 }
 
 struct TodayEntry: Codable, Equatable {
@@ -152,9 +148,7 @@ struct AgeStateResponse: Decodable {
         let currentBiologicalAgeYears: Double
         let agingDebtYears: Double
         let rejuvenationStreakDays: Int
-        let accelerationStreakDays: Int
         let totalRejuvenationDays: Int
-        let totalAccelerationDays: Int
     }
     
     struct TodayEntry: Decodable {

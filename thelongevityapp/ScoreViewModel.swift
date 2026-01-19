@@ -18,9 +18,7 @@ final class ScoreViewModel: ObservableObject {
     // Frontend does NOT calculate these - they come from backend API responses
     // Backend calculates streaks based on consecutive days, not check-in count
     @Published var rejuvenationStreakDays: Int = 0  // From backend: consecutive days with biological age decrease
-    @Published var accelerationStreakDays: Int = 0  // From backend: consecutive days with biological age increase
     @Published var totalRejuvenationDays: Int = 0
-    @Published var totalAccelerationDays: Int = 0
     
     @Published var todayScore: Double?
     @Published var todayDeltaYears: Double?
@@ -51,17 +49,36 @@ final class ScoreViewModel: ObservableObject {
     
     func apply(_ summary: StatsSummaryResponse) {
         let oldDelta = todayDeltaYears
-        print("[ScoreViewModel] Applying summary - userId: \(summary.userId), biologicalAge: \(summary.state.currentBiologicalAgeYears ?? summary.state.chronologicalAgeYears), agingDebt: \(summary.state.agingDebtYears)")
+        print("[ScoreViewModel] Applying summary - userId: \(summary.userId), chronologicalAge: \(summary.state.chronologicalAgeYears), biologicalAge: \(summary.state.currentBiologicalAgeYears ?? summary.state.baselineBiologicalAgeYears ?? summary.state.chronologicalAgeYears), agingDebt: \(summary.state.agingDebtYears)")
+        
         // Chronological age is fixed, sourced from backend only.
-        chronologicalAgeYears = summary.state.chronologicalAgeYears
-        biologicalAgeYears = summary.state.currentBiologicalAgeYears ?? summary.state.chronologicalAgeYears
+        // If backend returns 0, it means data hasn't been set yet - keep existing value if it's valid
+        if summary.state.chronologicalAgeYears > 0 {
+            chronologicalAgeYears = summary.state.chronologicalAgeYears
+        } else if chronologicalAgeYears == 0 {
+            // If both are 0, this is likely initial state - log warning
+            print("[ScoreViewModel] Warning: chronologicalAgeYears is 0 from backend, keeping 0")
+        }
+        
+        // Use currentBiologicalAgeYears if available, otherwise fallback to baselineBiologicalAgeYears, then chronologicalAgeYears
+        if let currentBio = summary.state.currentBiologicalAgeYears {
+            biologicalAgeYears = currentBio
+        } else if let baselineBio = summary.state.baselineBiologicalAgeYears {
+            biologicalAgeYears = baselineBio
+        } else if chronologicalAgeYears > 0 {
+            biologicalAgeYears = chronologicalAgeYears
+        } else {
+            // If all are 0 or nil, keep existing value or set to 0
+            if biologicalAgeYears == 0 {
+                print("[ScoreViewModel] Warning: All age values are 0 or nil")
+            }
+        }
+        
         agingDebtYears = summary.state.agingDebtYears
         
         // Streak values from backend - date-based and consecutive (not calculated locally)
         rejuvenationStreakDays = summary.state.rejuvenationStreakDays
-        accelerationStreakDays = summary.state.accelerationStreakDays
         totalRejuvenationDays = summary.state.totalRejuvenationDays
-        totalAccelerationDays = summary.state.totalAccelerationDays
         
         todayScore = summary.today?.score
         todayDeltaYears = summary.today?.deltaYears

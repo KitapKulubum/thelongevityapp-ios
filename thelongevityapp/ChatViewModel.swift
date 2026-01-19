@@ -56,7 +56,7 @@ class ChatViewModel: ObservableObject {
     @Published var dailyCheckInState: DailyCheckInState = .inactive
     @Published var isSubmitting: Bool = false
     @Published var submitState: SubmitState = .idle
-    @Published var isWaitingForResponse: Bool = false  // Loading state for AI chat responses
+    @Published var isWaitingForResponse: Bool = false
     
     var appState: AppState
     
@@ -258,13 +258,8 @@ class ChatViewModel: ObservableObject {
                 let chronoAge = result.chronologicalAgeYears
                 let diff = bioAge - chronoAge
                 let absDiff = abs(diff)
+                let direction = diff >= 0 ? "older" : "younger"
                 let diffText = String(format: "%.2f", absDiff)
-                let comparisonText: String
-                if diff >= 0 {
-                    comparisonText = "currently \(diffText) years above"
-                } else {
-                    comparisonText = "currently \(diffText) years below"
-                }
                 
                 // Determine key insights based on score
                 let scoreInsight: String
@@ -279,11 +274,11 @@ class ChatViewModel: ObservableObject {
                 let welcomeMessage = """
                 Welcome! 🎉
                 
-                This app tracks your biological age based on daily lifestyle choices. Your starting biological age is \(String(format: "%.2f", bioAge)) years, which is \(comparisonText) your \(String(format: "%.2f", chronoAge)) chronological years.
+                This app tracks your biological age based on daily lifestyle choices. Your baseline: \(String(format: "%.2f", bioAge)) years biological age (\(diffText) years \(direction) than your \(String(format: "%.0f", chronoAge)) chronological years).
                 
                 \(scoreInsight)
                 
-                Complete your daily check-in each day to see real-time updates on your Age tab. Your biological age and trends will update based on your daily habits.
+                Complete your daily check-in each day to see real-time updates on your Score tab. Your biological age and trends will update based on your daily habits.
                 
                 How can I help you today?
                 """
@@ -402,15 +397,10 @@ class ChatViewModel: ObservableObject {
                 
                 let bioAge = result.currentBiologicalAgeYears
                 let diff = bioAge - result.chronologicalAgeYears
+                let direction = diff >= 0 ? "older" : "younger"
                 let diffText = String(format: "%.2f", abs(diff))
-                let comparisonText: String
-                if diff >= 0 {
-                    comparisonText = "Your biological age is currently \(diffText) years above your chronological age"
-                } else {
-                    comparisonText = "Your biological age is currently \(diffText) years below your chronological age"
-                }
                 let explanation = """
-                Your estimated biological age is \(String(format: "%.2f", bioAge)) years. \(comparisonText).
+                Your estimated biological age is \(String(format: "%.2f", bioAge)) years (\(diffText) years \(direction) than your chronological age).
                 
                 Total score: \(String(format: "%.2f", result.totalScore))
                 Baseline offset (BAOYears): \(String(format: "%.2f", result.BAOYears))
@@ -555,42 +545,25 @@ class ChatViewModel: ObservableObject {
                     // Set state to completed
                     dailyCheckInState = .completed
                     
-                    // Immediately propagate today's delta to summary so Age screen sees it
-                    applyDailyResultToSummary(result)
-                    
                     // Completion message with insight and follow-up
                     let completionText: String
                     if let todayEntry = result.today {
-                        let delta = todayEntry.deltaYears
-                        let absDelta = abs(delta)
-                        
-                        let deltaMessage: String
-                        if absDelta < 0.01 {
-                            deltaMessage = "You maintained your current trajectory today."
-                        } else if delta < 0 {
-                            deltaMessage = "Your biological age trended younger today."
+                        let absDelta = abs(todayEntry.deltaYears)
+                        let deltaFormatted = String(format: "%.2f", absDelta)
+                        let direction: String
+                        if todayEntry.deltaYears < 0 {
+                            direction = "\(deltaFormatted) years younger"
+                        } else if todayEntry.deltaYears > 0 {
+                            direction = "\(deltaFormatted) years older"
                         } else {
-                            deltaMessage = "A slight upward shift today."
+                            direction = "no change"
                         }
                         
-                        // Build reasons summary - convert technical keywords to natural language
+                        // Build reasons summary
                         let reasonsText: String
                         if !todayEntry.reasons.isEmpty {
-                            let naturalReasons = todayEntry.reasons.prefix(3).map { reason in
-                                formatReason(reason)
-                            }
-                            
-                            let reasonsSentence: String
-                            if naturalReasons.count == 1 {
-                                reasonsSentence = naturalReasons[0]
-                            } else if naturalReasons.count == 2 {
-                                reasonsSentence = "\(naturalReasons[0]) and \(naturalReasons[1])"
-                            } else {
-                                let firstTwo = naturalReasons.prefix(2).joined(separator: ", ")
-                                reasonsSentence = "\(firstTwo), and \(naturalReasons[2])"
-                            }
-                            
-                            reasonsText = "\n\nThis was mainly influenced by \(reasonsSentence)."
+                            let reasonsList = todayEntry.reasons.prefix(3).joined(separator: ", ")
+                            reasonsText = "\n\nKey factors: \(reasonsList)"
                         } else {
                             reasonsText = ""
                         }
@@ -598,7 +571,7 @@ class ChatViewModel: ObservableObject {
                         completionText = """
                         Daily check-in completed ✅
                         
-                        \(deltaMessage)\(reasonsText)
+                        You're trending \(direction) today.\(reasonsText)
                         
                         Is there a topic you'd like help with?
                         """
@@ -671,78 +644,6 @@ class ChatViewModel: ObservableObject {
         }
     }
     
-    // Convert technical reason keywords to natural language
-    private func formatReason(_ reason: String) -> String {
-        let lowercased = reason.lowercased()
-        
-        // Map technical keywords to user-friendly phrases
-        switch lowercased {
-        case "sleep_hours", "sleep":
-            return "your sleep quality"
-        case "steps", "activity":
-            return "your activity level"
-        case "vigorous_minutes", "vigorous_activity":
-            return "your exercise intensity"
-        case "processed_food", "processed_food_score":
-            return "your food choices"
-        case "alcohol", "alcohol_units":
-            return "your alcohol consumption"
-        case "stress", "stress_level":
-            return "your stress management"
-        case "late_caffeine":
-            return "your caffeine timing"
-        case "screen_late", "late_screen":
-            return "your evening screen time"
-        case "bedtime", "bedtime_hour":
-            return "your sleep schedule"
-        case "nutrition", "nutrition_pattern":
-            return "your nutrition habits"
-        case "sugar":
-            return "your sugar intake"
-        case "smoking", "smoking_alcohol":
-            return "your lifestyle choices"
-        case "metabolic_health":
-            return "your metabolic health"
-        case "energy", "energy_focus":
-            return "your energy levels"
-        case "muscle", "muscle_mass":
-            return "your muscle health"
-        case "visceral_fat":
-            return "your body composition"
-        default:
-            // If unknown, try to make it more readable
-            return reason.replacingOccurrences(of: "_", with: " ").capitalized
-        }
-    }
-    
-    // Merge daily-update result into cached summary so UI can show today's delta instantly
-    private func applyDailyResultToSummary(_ result: DailyResultDTO) {
-        guard let currentSummary = appState.summary else {
-            print("[ChatViewModel] No current summary to update")
-            return
-        }
-        
-        guard let todayEntry = result.today else {
-            print("[ChatViewModel] No today entry in daily result")
-            return
-        }
-        
-        print("[ChatViewModel] Applying daily result - delta: \(todayEntry.deltaYears), date: \(todayEntry.date)")
-        
-        let patchedSummary = StatsSummaryResponse(
-            userId: currentSummary.userId,
-            state: result.state,
-            today: result.today,
-            weeklyHistory: currentSummary.weeklyHistory,
-            monthlyHistory: currentSummary.monthlyHistory,
-            yearlyHistory: currentSummary.yearlyHistory,
-            hasCompletedOnboarding: currentSummary.hasCompletedOnboarding
-        )
-        
-        appState.updateSummary(patchedSummary)
-        print("[ChatViewModel] Summary updated with today's delta: \(todayEntry.deltaYears)")
-    }
-    
     private func retryDaily(request: DailySubmitRequest) {
         isSubmitting = true
         submitState = .loading
@@ -757,50 +658,15 @@ class ChatViewModel: ObservableObject {
                     // Set state to completed
                     dailyCheckInState = .completed
                     
-                    // Immediately propagate today's delta to summary so Age screen sees it
-                    applyDailyResultToSummary(result)
-                    
                     // Completion message with insight and follow-up
                     let completionText: String
                     if let todayEntry = result.today {
-                        let delta = todayEntry.deltaYears
-                        let absDelta = abs(delta)
-                        
-                        let deltaMessage: String
-                        if absDelta < 0.01 {
-                            deltaMessage = "You maintained your current trajectory today."
-                        } else if delta < 0 {
-                            deltaMessage = "Your biological age trended younger today."
-                        } else {
-                            deltaMessage = "A slight upward shift today."
-                        }
-                        
-                        // Build reasons summary - convert technical keywords to natural language
-                        let reasonsText: String
-                        if !todayEntry.reasons.isEmpty {
-                            let naturalReasons = todayEntry.reasons.prefix(3).map { reason in
-                                formatReason(reason)
-                            }
-                            
-                            let reasonsSentence: String
-                            if naturalReasons.count == 1 {
-                                reasonsSentence = naturalReasons[0]
-                            } else if naturalReasons.count == 2 {
-                                reasonsSentence = "\(naturalReasons[0]) and \(naturalReasons[1])"
-                            } else {
-                                let firstTwo = naturalReasons.prefix(2).joined(separator: ", ")
-                                reasonsSentence = "\(firstTwo), and \(naturalReasons[2])"
-                            }
-                            
-                            reasonsText = "\n\nThis was mainly influenced by \(reasonsSentence)."
-                        } else {
-                            reasonsText = ""
-                        }
-                        
+                        let delta = String(format: "%.2f", todayEntry.deltaYears)
                         completionText = """
                         Daily check-in completed ✅
                         
-                        \(deltaMessage)\(reasonsText)
+                        Today's aging: \(delta) years
+                        Score: \(String(format: "%.2f", todayEntry.score))
                         
                         Want a quick plan to improve tomorrow's score?
                         """
@@ -907,15 +773,13 @@ class ChatViewModel: ObservableObject {
         )
         messages.append(userMessage)
         
-        // Set loading state
+        // Set waiting state
         isWaitingForResponse = true
         
         // Send to chat API
         LongevityAPI.shared.sendChatMessage(message: text) { [weak self] result in
                 DispatchQueue.main.async {
-                    // Clear loading state
                     self?.isWaitingForResponse = false
-                    
                     switch result {
                     case .success(let answer):
                     let assistantMessage = ChatMessage(

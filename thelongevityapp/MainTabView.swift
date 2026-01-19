@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Charts
+import UIKit
 
 struct MainTabView: View {
     @StateObject private var scoreViewModel = ScoreViewModel()
@@ -71,6 +72,22 @@ struct MainTabView: View {
             .environmentObject(appState)
             .preferredColorScheme(.dark)
             .onAppear {
+                // Configure tab bar appearance
+                let appearance = UITabBarAppearance()
+                appearance.configureWithOpaqueBackground()
+                appearance.backgroundColor = UIColor.black
+                
+                // Selected tab item color (primary green)
+                appearance.stackedLayoutAppearance.selected.iconColor = UIColor(red: 0.2, green: 0.5, blue: 0.35, alpha: 1.0)
+                appearance.stackedLayoutAppearance.selected.titleTextAttributes = [.foregroundColor: UIColor(red: 0.2, green: 0.5, blue: 0.35, alpha: 1.0)]
+                
+                // Unselected tab item color (gray)
+                appearance.stackedLayoutAppearance.normal.iconColor = UIColor.white.withAlphaComponent(0.6)
+                appearance.stackedLayoutAppearance.normal.titleTextAttributes = [.foregroundColor: UIColor.white.withAlphaComponent(0.6)]
+                
+                UITabBar.appearance().standardAppearance = appearance
+                UITabBar.appearance().scrollEdgeAppearance = appearance
+                
                 handleOnAppear(isOnboarding: isOnboarding)
             }
             .onChange(of: appState.hasCompletedOnboarding) { oldValue, newValue in
@@ -320,182 +337,219 @@ struct AICoachView: View {
     @ViewBuilder
     private func buildMessagesArea(isEmptyDaily: Bool, isOnboarding: Bool) -> some View {
         if isEmptyDaily && !isOnboarding {
-                // Hero message for daily mode
-                VStack {
-                    Spacer()
-                    VStack(spacing: 12) {
-                        Text("The Longevity App is ready.")
-                            .font(.system(size: 20, weight: .medium))
-                        Text("Let's optimize your healthspan.")
-                            .font(.system(size: 20, weight: .medium))
-                    }
-                    .foregroundColor(.white.opacity(0.9))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
-                    Spacer()
+            heroMessageView
+        } else {
+            scrollableMessagesView
+        }
+    }
+    
+    @ViewBuilder
+    private var heroMessageView: some View {
+        // Hero message for daily mode
+        VStack {
+            Spacer()
+            VStack(spacing: 12) {
+                Text("The Longevity App is ready.")
+                    .font(.system(size: 20, weight: .medium))
+                Text("Let's optimize your healthspan.")
+                    .font(.system(size: 20, weight: .medium))
+            }
+            .foregroundColor(.white.opacity(0.9))
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 20)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    @ViewBuilder
+    private var scrollableMessagesView: some View {
+        // Scrollable messages (always visible, but disabled when check-in is active)
+        ScrollViewReader { proxy in
+            messagesScrollView(proxy: proxy)
+        }
+    }
+    
+    @ViewBuilder
+    private func messagesScrollView(proxy: ScrollViewProxy) -> some View {
+        ScrollView {
+            messagesContent
+        }
+        .disabled(viewModel.isChatDisabled && viewModel.mode != .onboarding)
+        .onAppear {
+            handleScrollViewAppear(proxy: proxy)
+        }
+        .onChange(of: appState.summary?.today?.date ?? "") { _, _ in
+            updateDailyCheckInState()
+        }
+        .onChange(of: viewModel.messages.count) {
+            handleMessagesCountChange(proxy: proxy)
+        }
+        .onChange(of: viewModel.currentOnboardingQuestionIndex) {
+            handleOnboardingQuestionIndexChange(proxy: proxy)
+        }
+        .onChange(of: viewModel.mode) {
+            handleModeChange(proxy: proxy)
+        }
+    }
+    
+    @ViewBuilder
+    private var messagesContent: some View {
+        VStack(spacing: 16) {
+            // Show all messages
+            ForEach(viewModel.messages) { message in
+                messageRow(message: message)
+            }
+            
+            // Onboarding question options - show after the last message
+            if viewModel.mode == .onboarding,
+               let question = viewModel.currentOnboardingQuestion,
+               !viewModel.isSubmitting {
+                onboardingOptionsView(question: question)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .padding(.bottom, viewModel.chatInputEnabled ? 0 : 80)
+    }
+    
+    @ViewBuilder
+    private func messageRow(message: ChatMessage) -> some View {
+        VStack(spacing: 8) {
+            ChatBubbleView(message: message)
+                .opacity((viewModel.isChatDisabled && viewModel.mode != .onboarding) ? 0.4 : 1.0)
+            
+            // Loading indicator when waiting for AI response
+            if viewModel.isWaitingForResponse && message.id == viewModel.messages.last?.id && message.isUser {
+                LongevityAILoadingView()
+                    .padding(.top, 8)
+            }
+            
+            // Retry button for failed submissions
+            if !message.isUser,
+               message.id == viewModel.messages.last?.id,
+               case .failed(let errorMsg) = viewModel.submitState,
+               message.text.contains(errorMsg) {
+                retryButtonRow
+            }
+        }
+        .id(message.id)
+    }
+    
+    @ViewBuilder
+    private var retryButtonRow: some View {
+        HStack(spacing: 12) {
+            Button(action: {
+                viewModel.retryLastSubmission()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 12))
+                    Text("Retry")
+                        .font(.system(size: 14, weight: .semibold))
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                // Scrollable messages (always visible, but disabled when check-in is active)
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(spacing: 16) {
-                            // Show all messages
-                            ForEach(viewModel.messages) { message in
-                                VStack(spacing: 8) {
-                                    ChatBubbleView(message: message)
-                                        // Don't reduce opacity during onboarding - messages should be fully visible
-                                        .opacity((viewModel.isChatDisabled && viewModel.mode != .onboarding) ? 0.4 : 1.0)
-                                    
-                                    // Loading indicator when waiting for AI response
-                                    if viewModel.isWaitingForResponse && message.id == viewModel.messages.last?.id && message.isUser {
-                                        LongevityAILoadingView()
-                                            .padding(.top, 8)
-                                    }
-                                    
-                                    // Retry button for failed submissions
-                                    if !message.isUser,
-                                       message.id == viewModel.messages.last?.id,
-                                       case .failed(let errorMsg) = viewModel.submitState,
-                                       message.text.contains(errorMsg) {
-                                        HStack(spacing: 12) {
-                                            Button(action: {
-                                                viewModel.retryLastSubmission()
-                                            }) {
-                                                HStack(spacing: 6) {
-                                                    Image(systemName: "arrow.clockwise")
-                                                        .font(.system(size: 12))
-                                                    Text("Retry")
-                                                        .font(.system(size: 14, weight: .semibold))
-                                                }
-                                                .foregroundColor(.white)
-                                                .padding(.horizontal, 16)
-                                                .padding(.vertical, 10)
-                                                .background(
-                                                    Capsule()
-                                                        .fill(Color.primaryGreen.opacity(0.2))
-                                                        .overlay(
-                                                            Capsule()
-                                                                .stroke(Color.primaryGreen.opacity(0.4), lineWidth: 1)
-                                                        )
-                                                )
-                                            }
-                                            
-                                            if viewModel.mode == .onboarding && viewModel.currentOnboardingQuestionIndex > 0 {
-                                                Button(action: {
-                                                    viewModel.goBackToLastQuestion()
-                                                }) {
-                                                    Text("Edit answers")
-                                                        .font(.system(size: 14, weight: .medium))
-                                                        .foregroundColor(.white.opacity(0.7))
-                                                        .padding(.horizontal, 16)
-                                                        .padding(.vertical, 10)
-                                                }
-                                            }
-                                        }
-                                        .padding(.top, 4)
-                                        .opacity(viewModel.isChatDisabled ? 0.4 : 1.0)
-                                    }
-                                }
-                                .id(message.id)
-                            }
-                            
-                            // Onboarding question options - show after the last message
-                            if viewModel.mode == .onboarding,
-                               let question = viewModel.currentOnboardingQuestion,
-                               !viewModel.isSubmitting {
-                                VStack(spacing: 12) {
-                                    ForEach(question.options) { option in
-                                        OptionButton(
-                                            title: option.title,
-                                            isSelected: false,
-                                            action: {
-                                                print("[AICoachView] Option tapped: \(option.title)")
-                                                viewModel.selectOnboardingOption(option)
-                                            }
-                                        )
-                                        .buttonStyle(PlainButtonStyle()) // Ensure button is tappable
-                                    }
-                                }
-                                .padding(.horizontal, 0) // Already in VStack with padding
-                                .padding(.top, 8)
-                                .id("onboarding-options")
-                                .allowsHitTesting(true) // Ensure options are tappable
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 16)
-                        // Add extra bottom space when input is disabled to avoid overlap
-                        .padding(.bottom, viewModel.chatInputEnabled ? 0 : 80)
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(
+                    Capsule()
+                        .fill(Color.primaryGreen.opacity(0.2))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.primaryGreen.opacity(0.4), lineWidth: 1)
+                        )
+                )
+            }
+            
+            if viewModel.mode == .onboarding && viewModel.currentOnboardingQuestionIndex > 0 {
+                Button(action: {
+                    viewModel.goBackToLastQuestion()
+                }) {
+                    Text("Edit answers")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                }
+            }
+        }
+        .padding(.top, 4)
+        .opacity(viewModel.isChatDisabled ? 0.4 : 1.0)
+    }
+    
+    @ViewBuilder
+    private func onboardingOptionsView(question: OnboardingQuestion) -> some View {
+        VStack(spacing: 12) {
+            ForEach(question.options) { option in
+                OptionButton(
+                    title: option.title,
+                    isSelected: false,
+                    action: {
+                        print("[AICoachView] Option tapped: \(option.title)")
+                        viewModel.selectOnboardingOption(option)
                     }
-                    // Don't disable ScrollView during onboarding - only disable during daily check-in
-                    .disabled(viewModel.isChatDisabled && viewModel.mode != .onboarding)
-                    .onAppear {
-                        // Scroll to bottom when view appears (especially for onboarding)
-                        if !viewModel.messages.isEmpty {
-                            if let last = viewModel.messages.last {
-                                // Use longer delay for onboarding to ensure messages are rendered
-                                let delay = viewModel.mode == .onboarding ? 0.6 : 0.3
-                                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                                    withAnimation {
-                                        proxy.scrollTo(last.id, anchor: .bottom)
-                                    }
-                                }
-                            }
-                        }
-                        // Update daily check-in state based on summary.today
-                        updateDailyCheckInState()
+                )
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.horizontal, 0)
+        .padding(.top, 8)
+        .id("onboarding-options")
+        .allowsHitTesting(true)
+    }
+    
+    private func handleScrollViewAppear(proxy: ScrollViewProxy) {
+        if !viewModel.messages.isEmpty {
+            if let last = viewModel.messages.last {
+                let delay = viewModel.mode == .onboarding ? 0.6 : 0.3
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    withAnimation {
+                        proxy.scrollTo(last.id, anchor: .bottom)
                     }
-                    .onChange(of: appState.summary?.today?.date ?? "") { _, _ in
-                        // Update daily check-in state when summary.today changes
-                        // This ensures UI reflects backend state (completed vs. not completed)
-                        updateDailyCheckInState()
-                    }
-                    .onChange(of: viewModel.messages.count) {
-                        // Scroll to last message when new message is added
-                        if viewModel.mode == .onboarding {
-                            // In onboarding mode, scroll to options instead of last message
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                                withAnimation {
-                                    proxy.scrollTo("onboarding-options", anchor: .bottom)
-                                }
-                            }
-                        } else if let last = viewModel.messages.last {
-                            // In daily mode, scroll to last message
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                withAnimation {
-                                    proxy.scrollTo(last.id, anchor: .bottom)
-                                }
-                            }
-                        }
-                    }
-                    .onChange(of: viewModel.currentOnboardingQuestionIndex) {
-                        // Scroll to options when new question appears
-                        if viewModel.mode == .onboarding {
-                            // Use longer delay to ensure options are fully rendered
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                                withAnimation {
-                                    proxy.scrollTo("onboarding-options", anchor: .bottom)
-                                }
-                            }
-                        }
-                    }
-                    .onChange(of: viewModel.mode) {
-                        // When switching to onboarding mode, scroll to bottom
-                        if viewModel.mode == .onboarding && !viewModel.messages.isEmpty {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                if let last = viewModel.messages.last {
-                                    withAnimation {
-                                        proxy.scrollTo(last.id, anchor: .bottom)
-                                    }
-                                }
-                            }
-                        }
+                }
+            }
+        }
+        updateDailyCheckInState()
+    }
+    
+    private func handleMessagesCountChange(proxy: ScrollViewProxy) {
+        if viewModel.mode == .onboarding {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                withAnimation {
+                    proxy.scrollTo("onboarding-options", anchor: .bottom)
+                }
+            }
+        } else if let last = viewModel.messages.last {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                withAnimation {
+                    proxy.scrollTo(last.id, anchor: .bottom)
+                }
+            }
+        }
+    }
+    
+    private func handleOnboardingQuestionIndexChange(proxy: ScrollViewProxy) {
+        if viewModel.mode == .onboarding {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                withAnimation {
+                    proxy.scrollTo("onboarding-options", anchor: .bottom)
+                }
+            }
+        }
+    }
+    
+    private func handleModeChange(proxy: ScrollViewProxy) {
+        if viewModel.mode == .onboarding && !viewModel.messages.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                if let last = viewModel.messages.last {
+                    withAnimation {
+                        proxy.scrollTo(last.id, anchor: .bottom)
                     }
                 }
             }
         }
     }
+}
 
 // ChatMessage is now defined in ChatViewModel.swift
 
@@ -1088,6 +1142,12 @@ struct LongevityTrendView: View {
     private func updateScoreFromSummary() {
         if let summary = appState.summary {
             scoreViewModel.apply(summary)
+            
+            // If chronological age from summary is 0, try to use appState's userChronologicalAge
+            if scoreViewModel.chronologicalAgeYears == 0, let userAge = appState.userChronologicalAge, userAge > 0 {
+                scoreViewModel.chronologicalAgeYears = userAge
+                print("[LongevityTrendView] Using chronological age from appState: \(userAge)")
+            }
         }
     }
     
@@ -1105,13 +1165,6 @@ struct LongevityTrendView: View {
                 heroBiologicalAge
                 .padding(.horizontal, screenPadding)
                 .padding(.bottom, 36)
-                
-                // 4. Streak (calm reward, higher up)
-                if scoreViewModel.rejuvenationStreakDays > 0 {
-                    calmStreakSection()
-                        .padding(.horizontal, screenPadding)
-                        .padding(.bottom, 32)
-                }
                 
                 // 5. Time Range Selector (above graph, closer to hero)
                 timeRangeControl
@@ -1750,6 +1803,8 @@ struct ProfileView: View {
     @State private var isLoggingOut: Bool = false
     @State private var showDeleteAccountAlert: Bool = false
     @State private var isDeletingAccount: Bool = false
+    @State private var showEmailVerificationRequiredAlert: Bool = false
+    @State private var isBypassingVerify: Bool = false
     @State private var selectedLanguage: String = "English"
     @StateObject private var languageManager = LanguageManager.shared
     @State private var showTerms: Bool = false
@@ -1868,11 +1923,17 @@ struct ProfileView: View {
                 }
             }
         } message: {
-            if !authManager.isEmailVerified {
-                Text("Email verification is required to delete your account. Please verify your email first.")
-            } else {
-                Text("This will permanently delete your data and cannot be undone.")
+            Text("This will permanently delete your data and cannot be undone.")
+        }
+        .alert("Email Verification Required", isPresented: $showEmailVerificationRequiredAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Bypass Verify (Test)", role: .none) {
+                Task {
+                    await handleBypassVerify()
+                }
             }
+        } message: {
+            Text("Email verification is required to delete your account. Please verify your email first, or use the bypass button for testing.")
         }
         .onAppear {
             // Reload user to refresh email verification status
@@ -1903,7 +1964,7 @@ struct ProfileView: View {
             NotificationSettingsView()
         }
         .sheet(isPresented: $showMembershipDetail) {
-            MembershipDetailView()
+            MembershipView()
         }
     }
     
@@ -2210,6 +2271,51 @@ struct ProfileView: View {
                     .foregroundColor(.white.opacity(0.3))
                     .padding(.leading, 0)
             }
+            
+            // Bypass Verify button (for testing)
+            #if DEBUG
+            Button(action: {
+                Task {
+                    await handleBypassVerify()
+                }
+            }) {
+                Text("Bypass Verify (Test)")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(.yellow.opacity(0.8))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .disabled(isBypassingVerify)
+            #endif
+        }
+    }
+    
+    private func handleBypassVerify() async {
+        isBypassingVerify = true
+        
+        do {
+            let response = try await APIClient.shared.bypassVerify()
+            print("[ProfileView] Email verification bypassed successfully: \(response.message)")
+            
+            // Reload auth state to update email verification status
+            await MainActor.run {
+                Task {
+                    // Force refresh of auth state
+                    try? await authManager.reloadUser()
+                }
+                isBypassingVerify = false
+                showEmailVerificationRequiredAlert = false
+            }
+        } catch let apiError as APIError {
+            print("[ProfileView] Bypass verify failed: \(apiError)")
+            await MainActor.run {
+                isBypassingVerify = false
+                // Show error alert if needed
+            }
+        } catch {
+            print("[ProfileView] Bypass verify failed with unknown error: \(error)")
+            await MainActor.run {
+                isBypassingVerify = false
+            }
         }
     }
     
@@ -2240,25 +2346,75 @@ struct ProfileView: View {
     
     private func handleDeleteAccount() async {
         // Check email verification (required for sensitive action)
-        await MainActor.run {
-            if !authManager.isEmailVerified {
-                print("[ProfileView] Delete account blocked: email not verified")
+        let isVerified = await MainActor.run {
+            return authManager.isEmailVerified
+        }
+        
+        if !isVerified {
+            print("[ProfileView] Delete account blocked: email not verified")
+            await MainActor.run {
                 showDeleteAccountAlert = false
-                return
+                showEmailVerificationRequiredAlert = true
             }
+            return
         }
         
         isDeletingAccount = true
-        // TODO: Implement delete account API call
-        // Backend will also verify email verification status via requireEmailVerification middleware
-        // try await APIClient.shared.deleteAccount()
-        print("[ProfileView] Delete account requested")
         
-        // After successful deletion, logout
-        await handleLogout()
-        
-        await MainActor.run {
-            isDeletingAccount = false
+        do {
+            // Call backend delete account API
+            let response = try await APIClient.shared.deleteAccount()
+            print("[ProfileView] Account deleted successfully: \(response.message)")
+            
+            // After successful deletion, sign out from Firebase Auth client-side
+            await MainActor.run {
+                do {
+                    try authManager.signOut()
+                    print("[ProfileView] Successfully signed out from Firebase after account deletion")
+                } catch {
+                    print("[ProfileView] Failed to sign out after account deletion: \(error)")
+                }
+            }
+        } catch let apiError as APIError {
+            print("[ProfileView] Delete account failed: \(apiError)")
+            
+            // Handle specific error cases
+            await MainActor.run {
+                isDeletingAccount = false
+                
+                switch apiError {
+                case .httpError(_, let statusCode, let responseBody):
+                    if statusCode == 403 {
+                        // Check if it's email verification error
+                        let lowercased = responseBody.lowercased()
+                        if lowercased.contains("email_verification_required") || 
+                           lowercased.contains("email verification") {
+                            // Email verification required - alert already shown in alert message
+                            showDeleteAccountAlert = false
+                        } else {
+                            // Other 403 error
+                            showDeleteAccountAlert = false
+                        }
+                    } else if statusCode == 401 {
+                        // Unauthorized - session expired
+                        showDeleteAccountAlert = false
+                    } else {
+                        // Other error
+                        showDeleteAccountAlert = false
+                    }
+                case .networkError:
+                    // Network error - show error message
+                    showDeleteAccountAlert = false
+                default:
+                    showDeleteAccountAlert = false
+                }
+            }
+        } catch {
+            print("[ProfileView] Delete account failed with unknown error: \(error)")
+            await MainActor.run {
+                isDeletingAccount = false
+                showDeleteAccountAlert = false
+            }
         }
     }
 }
@@ -2931,7 +3087,7 @@ struct OnboardingProgressBar: View {
             
             // Progress text
             HStack {
-                Text("Question \(currentQuestionIndex + 1) of \(totalQuestions)")
+                Text("Question \(currentQuestionIndex) of \(totalQuestions)")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.white.opacity(0.6))
                 Spacer()

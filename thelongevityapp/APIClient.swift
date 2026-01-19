@@ -11,7 +11,16 @@ import FirebaseAuth
 final class APIClient {
     static let shared = APIClient()
     
-    private init() {}
+    // Custom URLSession with increased timeout intervals
+    private let urlSession: URLSession
+    
+    private init() {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 120.0 // 2 minutes for request timeout
+        configuration.timeoutIntervalForResource = 300.0 // 5 minutes for resource timeout
+        configuration.waitsForConnectivity = true
+        self.urlSession = URLSession(configuration: configuration)
+    }
     
     private var baseURL: URL {
         #if DEBUG
@@ -27,6 +36,7 @@ final class APIClient {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.timeoutInterval = 120.0 // 2 minutes timeout
         
         // Format dateOfBirth as "yyyy-MM-dd" if provided
         let dateOfBirthString: String?
@@ -56,6 +66,7 @@ final class APIClient {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.timeoutInterval = 120.0 // 2 minutes timeout
         if let token = try? await AuthManager.shared.getIDToken() {
             addAuthHeader(&urlRequest, token: token)
         }
@@ -108,7 +119,12 @@ final class APIClient {
         
         // Log full response before decoding
         do {
-            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            // Ensure request has timeout interval set
+            var mutableRequest = urlRequest
+            if mutableRequest.timeoutInterval == 60.0 { // Default timeout
+                mutableRequest.timeoutInterval = 120.0 // Increase to 2 minutes
+            }
+            let (data, response) = try await urlSession.data(for: mutableRequest)
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.invalidResponse(endpoint: "/api/analytics/delta")
             }
@@ -243,6 +259,30 @@ final class APIClient {
         
         return try await perform(urlRequest, as: SubscriptionResponse.self, endpoint: "/api/subscription/status")
     }
+    
+    // MARK: - Account Deletion
+    func deleteAccount() async throws -> DeleteAccountResponse {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("account")
+        let urlRequest = try await authorizedRequest(url: url, method: "DELETE", body: nil as Data?)
+        
+        return try await perform(urlRequest, as: DeleteAccountResponse.self, endpoint: "/api/auth/account")
+    }
+    
+    // MARK: - Test Bypass (Development/Test only)
+    func testBypass() async throws -> TestBypassResponse {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("subscription").appendingPathComponent("test-bypass")
+        let urlRequest = try await authorizedRequest(url: url, method: "POST", body: nil as Data?)
+        
+        return try await perform(urlRequest, as: TestBypassResponse.self, endpoint: "/api/subscription/test-bypass")
+    }
+    
+    // MARK: - Email Verification Bypass (Test only)
+    func bypassVerify() async throws -> BypassVerifyResponse {
+        let url = baseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("bypassverify")
+        let urlRequest = try await authorizedRequest(url: url, method: "POST", body: nil as Data?)
+        
+        return try await perform(urlRequest, as: BypassVerifyResponse.self, endpoint: "/api/auth/bypassverify")
+    }
 }
 
 // MARK: - API Error Types
@@ -275,6 +315,7 @@ private extension APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 120.0 // 2 minutes timeout
         if let body = body {
             request.httpBody = try JSONEncoder().encode(body)
         }
@@ -287,6 +328,7 @@ private extension APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 120.0 // 2 minutes timeout
         request.httpBody = body
         let token = try await AuthManager.shared.getIDToken()
         addAuthHeader(&request, token: token)
@@ -339,8 +381,15 @@ private extension APIClient {
     
     func perform<T: Decodable>(_ request: URLRequest, as type: T.Type, endpoint: String) async throws -> T {
         print("[APIClient] \(request.httpMethod ?? "") \(request.url?.absoluteString ?? "")")
+        
+        // Ensure request has timeout interval set
+        var mutableRequest = request
+        if mutableRequest.timeoutInterval == 60.0 { // Default timeout
+            mutableRequest.timeoutInterval = 120.0 // Increase to 2 minutes
+        }
+        
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await urlSession.data(for: mutableRequest)
         guard let httpResponse = response as? HTTPURLResponse else {
                 print("[APIClient] \(endpoint) failed: Invalid response type")
                 throw APIError.invalidResponse(endpoint: endpoint)
@@ -469,5 +518,31 @@ struct SubscriptionResponse: Codable {
         let plan: String? // "membership_monthly" | "membership_yearly" | null
         let renewalDate: String? // ISO date string
     }
+}
+
+// MARK: - Account Deletion DTOs
+struct DeleteAccountResponse: Codable {
+    let success: Bool
+    let message: String
+}
+
+// MARK: - Test Bypass DTOs
+struct TestBypassResponse: Codable {
+    let success: Bool
+    let subscription: TestBypassSubscriptionInfo?
+    let message: String
+    
+    struct TestBypassSubscriptionInfo: Codable {
+        let status: String
+        let plan: String
+        let renewalDate: String
+        let membershipDisplayName: String
+    }
+}
+
+// MARK: - Email Verification Bypass DTOs
+struct BypassVerifyResponse: Codable {
+    let success: Bool
+    let message: String
 }
 

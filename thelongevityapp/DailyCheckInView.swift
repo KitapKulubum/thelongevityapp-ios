@@ -24,7 +24,6 @@ struct DailyCheckInView: View {
     @State private var currentBiologicalAge: Double?
     @State private var agingDebt: Double?
     @State private var rejuvenationStreak: Int?
-    @State private var accelerationStreak: Int?
     @State private var todayScore: Double?
     @State private var todayDeltaYears: Double?
 
@@ -290,21 +289,6 @@ struct DailyCheckInView: View {
                                 .background(Color.primaryGreen.opacity(0.1))
                                 .cornerRadius(20)
                             }
-                            
-                            // Acceleration Streak (from backend - date-based, consecutive)
-                            if let accelStreak = accelerationStreak, accelStreak > 0 {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundColor(.red)
-                                    Text("\(accelStreak) day\(accelStreak == 1 ? "" : "s") acceleration streak")
-                                        .font(.subheadline)
-                                        .foregroundColor(.red)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.red.opacity(0.1))
-                                .cornerRadius(20)
-                            }
                         }
                         .padding()
                         .background(Color(.systemGray6))
@@ -383,9 +367,7 @@ struct DailyCheckInView: View {
                         scoreViewModel.biologicalAgeYears = state.currentBiologicalAgeYears ?? state.chronologicalAgeYears
                         scoreViewModel.agingDebtYears = state.agingDebtYears
                         scoreViewModel.rejuvenationStreakDays = state.rejuvenationStreakDays
-                        scoreViewModel.accelerationStreakDays = state.accelerationStreakDays
                         scoreViewModel.totalRejuvenationDays = state.totalRejuvenationDays
-                        scoreViewModel.totalAccelerationDays = state.totalAccelerationDays
                     }
                     
                     // Update local state for display
@@ -394,7 +376,6 @@ struct DailyCheckInView: View {
                     self.currentBiologicalAge = ageStore.currentBiologicalAgeYears
                     self.agingDebt = ageStore.agingDebtYears
                     self.rejuvenationStreak = ageStore.rejuvenationStreakDays
-                    self.accelerationStreak = ageStore.accelerationStreakDays
                     self.hasResult = true
                     
                     // Refresh summary to ensure all data is in sync (but streak is already updated above)
@@ -406,27 +387,31 @@ struct DailyCheckInView: View {
                     // Generate message based on current data
                     var message = "Check-in saved. "
                     
-                    if let chrono = ageStore.profileChronologicalAgeYears,
+                    // Use todayDeltaYears from summary if available, otherwise calculate from ages
+                    if let todayDelta = scoreViewModel.todayDeltaYears {
+                        let absDelta = abs(todayDelta)
+                        if todayDelta < 0 {
+                            message += String(format: "Rejuvenation: %.2f years. ", absDelta)
+                            message += "You're trending younger today. "
+                        } else if todayDelta > 0 {
+                            message += String(format: "Aging debt: %.2f years. ", absDelta)
+                            message += "You're accelerating today. You can improve this tomorrow with 1–2 adjustments. "
+                        } else {
+                            message += "Today: 0.00 years. You're stable today, your biological age is maintained. "
+                        }
+                    } else if let chrono = ageStore.profileChronologicalAgeYears,
                        let bio = ageStore.currentBiologicalAgeYears {
                         let diff = bio - chrono
+                        let absDiff = abs(diff)
                         
                         if diff < 0 {
-                            message += String(format: "Rejuvenation: %.2f years. ", diff)
-                            message += "Bugün gençleşme yönündesin"
-                            // Streak value from backend (date-based, consecutive)
-                            if ageStore.rejuvenationStreakDays > 0 {
-                                message += " (+ \(ageStore.rejuvenationStreakDays) day streak)"
-                            }
-                            message += ". "
+                            message += String(format: "Rejuvenation: %.2f years. ", absDiff)
+                            message += "You're trending younger today. "
                         } else if diff == 0 {
-                            message += "Today: 0.00 years. Bugün stabil, biyolojik yaşın korunuyor. "
+                            message += "Today: 0.00 years. You're stable today, your biological age is maintained. "
                         } else {
-                            message += String(format: "Aging debt: +%.2f years. ", diff)
-                            message += "Bugün hızlanma var, yarın 1–2 öneri ile düzeltebilirsin. "
-                            // Show acceleration streak if present
-                            if ageStore.accelerationStreakDays > 0 {
-                                message += "(\(ageStore.accelerationStreakDays) day acceleration streak)"
-                            }
+                            message += String(format: "Aging debt: %.2f years. ", absDiff)
+                            message += "You're accelerating today. You can improve this tomorrow with 1–2 adjustments. "
                         }
                     } else {
                         message += "Your biological age is updated."

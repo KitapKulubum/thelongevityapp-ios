@@ -78,7 +78,7 @@ struct MembershipView: View {
                             .padding(.vertical, 16)
                             .background(
                                 Capsule()
-                                    .fill(Color.primaryGreen)
+                                    .fill(Color(red: 0.2, green: 0.5, blue: 0.35))
                             )
                         }
                         .padding(.horizontal, 24)
@@ -107,7 +107,7 @@ struct MembershipView: View {
                     Button("Done") {
                         dismiss()
                     }
-                    .foregroundColor(Color.primaryGreen)
+                    .foregroundColor(Color(red: 0.2, green: 0.5, blue: 0.35))
                 }
             }
             .preferredColorScheme(.dark)

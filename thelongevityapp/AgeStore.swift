@@ -23,9 +23,7 @@ final class AgeStore: ObservableObject {
     // Frontend does NOT calculate these - they come from backend API responses
     // Backend calculates streaks based on consecutive days, not check-in count
     @Published var rejuvenationStreakDays: Int = 0  // From backend: consecutive days with biological age decrease
-    @Published var accelerationStreakDays: Int = 0  // From backend: consecutive days with biological age increase
     @Published var totalRejuvenationDays: Int = 0
-    @Published var totalAccelerationDays: Int = 0
     @Published var todayDeltaYears: Double?
     @Published var todayReasons: [String] = []
     @Published var trendPoints: [TrendPoint] = []
@@ -81,9 +79,7 @@ final class AgeStore: ObservableObject {
         
         // Streak values from backend - date-based and consecutive (not calculated locally)
         rejuvenationStreakDays = summary.state.rejuvenationStreakDays
-        accelerationStreakDays = summary.state.accelerationStreakDays
         totalRejuvenationDays = summary.state.totalRejuvenationDays
-        totalAccelerationDays = summary.state.totalAccelerationDays
         
         // Update legacy state for backward compatibility
         // Use chronological age as fallback for optional biological age fields
@@ -95,9 +91,7 @@ final class AgeStore: ObservableObject {
             currentBiologicalAgeYears: currentBioAge,
             agingDebtYears: summary.state.agingDebtYears,
             rejuvenationStreakDays: summary.state.rejuvenationStreakDays,
-            accelerationStreakDays: summary.state.accelerationStreakDays,
-            totalRejuvenationDays: summary.state.totalRejuvenationDays,
-            totalAccelerationDays: summary.state.totalAccelerationDays
+            totalRejuvenationDays: summary.state.totalRejuvenationDays
         )
         
         print("[AgeStore] Summary updated successfully.")
@@ -154,8 +148,6 @@ final class AgeStore: ObservableObject {
         print("  - State biological: \(result.state.currentBiologicalAgeYears ?? 0)")
         print("  - State aging debt: \(result.state.agingDebtYears)")
         print("  - State rejuvenation streak: \(result.state.rejuvenationStreakDays)")
-        print("  - State acceleration streak: \(result.state.accelerationStreakDays)")
-        
         // Update state from DailyResultDTO
         state = result.state
         today = result.today
@@ -166,9 +158,7 @@ final class AgeStore: ObservableObject {
         
         // Streak values from backend - date-based and consecutive (not calculated locally)
         rejuvenationStreakDays = result.state.rejuvenationStreakDays
-        accelerationStreakDays = result.state.accelerationStreakDays
         totalRejuvenationDays = result.state.totalRejuvenationDays
-        totalAccelerationDays = result.state.totalAccelerationDays
         
         // Update today's delta and reasons if available
         if let todayEntry = result.today {
@@ -185,17 +175,13 @@ final class AgeStore: ObservableObject {
         print("  - State biological: \(response.state.currentBiologicalAgeYears)")
         print("  - State aging debt: \(response.state.agingDebtYears)")
         print("  - State rejuvenation streak: \(response.state.rejuvenationStreakDays)")
-        print("  - State acceleration streak: \(response.state.accelerationStreakDays)")
-        
         profileChronologicalAgeYears = response.profile.chronologicalAgeYears
         currentBiologicalAgeYears = response.state.currentBiologicalAgeYears
         agingDebtYears = response.state.agingDebtYears
         
         // Streak values from backend - date-based and consecutive (not calculated locally)
         rejuvenationStreakDays = response.state.rejuvenationStreakDays
-        accelerationStreakDays = response.state.accelerationStreakDays
         totalRejuvenationDays = response.state.totalRejuvenationDays
-        totalAccelerationDays = response.state.totalAccelerationDays
         
         // Update today entry if available
         if let today = response.today {
@@ -219,9 +205,7 @@ final class AgeStore: ObservableObject {
                 currentBiologicalAgeYears: currentBioAge,
                 agingDebtYears: response.state.agingDebtYears,
                 rejuvenationStreakDays: response.state.rejuvenationStreakDays,
-                accelerationStreakDays: response.state.accelerationStreakDays,
-                totalRejuvenationDays: response.state.totalRejuvenationDays,
-                totalAccelerationDays: response.state.totalAccelerationDays
+                totalRejuvenationDays: response.state.totalRejuvenationDays
             )
             
         print("[AgeStore] Properties updated successfully. UI should refresh.")

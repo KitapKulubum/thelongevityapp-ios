@@ -284,8 +284,10 @@ struct PaywallView: View {
                     await transaction.finish()
                 }
                 
+                // Notify that subscription is now active
                 await MainActor.run {
                     isPurchasing = false
+                    NotificationCenter.default.post(name: NSNotification.Name("SubscriptionActivated"), object: nil)
                 }
             } catch {
                 await MainActor.run {
@@ -299,24 +301,64 @@ struct PaywallView: View {
     
     #if DEBUG
     private func activateTestBypass() async {
+        isPurchasing = true
+        purchaseError = nil
+        
         do {
+            // Call backend test bypass API
             let response = try await APIClient.shared.testBypass()
+            print("[PaywallView] Test bypass activated: \(response.message)")
             
-            if response.success, let _ = response.subscription {
+            if let subscription = response.subscription {
+                print("[PaywallView] Subscription status: \(subscription.status), plan: \(subscription.plan)")
+                
+                // Update subscription status
                 await MainActor.run {
-                    // Update subscription status - always set to active for test bypass
                     appState.subscriptionStatus = .active
-                    
-                    // Also update SubscriptionManager (convert AppState.SubscriptionStatus to SubscriptionManager.SubscriptionStatus)
                     subscriptionManager.subscriptionStatus = .active
                 }
                 
-                print("[PaywallView] Test bypass activated successfully: \(response.message ?? "No message")")
-            } else {
-                print("[PaywallView] Test bypass failed: success=false")
+                // Reload subscription status to ensure it's updated
+                await subscriptionManager.loadSubscriptionStatus()
+                
+                // Notify that subscription is now active (this will be handled by RootView)
+                await MainActor.run {
+                    // The RootView will check subscription status and hide paywall
+                    NotificationCenter.default.post(name: NSNotification.Name("SubscriptionActivated"), object: nil)
+                    isPurchasing = false
+                }
+            }
+        } catch let apiError as APIError {
+            print("[PaywallView] Test bypass failed: \(apiError)")
+            
+            await MainActor.run {
+                isPurchasing = false
+                
+                switch apiError {
+                case .httpError(_, let statusCode, let responseBody):
+                    if statusCode == 403 {
+                        purchaseError = "This endpoint is only available in development/test environments."
+                    } else if statusCode == 401 {
+                        purchaseError = "Your session has expired. Please log in again."
+                    } else {
+                        purchaseError = "Failed to activate test subscription. Please try again."
+                    }
+                    showError = true
+                case .networkError:
+                    purchaseError = "Network error. Please check your connection and try again."
+                    showError = true
+                default:
+                    purchaseError = "Failed to activate test subscription. Please try again."
+                    showError = true
+                }
             }
         } catch {
-            print("[PaywallView] Test bypass error: \(error)")
+            print("[PaywallView] Test bypass failed with unknown error: \(error)")
+            await MainActor.run {
+                isPurchasing = false
+                purchaseError = "Failed to activate test subscription. Please try again."
+                showError = true
+            }
         }
     }
     #endif

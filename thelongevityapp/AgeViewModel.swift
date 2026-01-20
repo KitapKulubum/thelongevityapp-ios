@@ -45,7 +45,7 @@ final class AgeViewModel: ObservableObject {
             // Note: today is no longer in the new response structure
             today = nil
         case .failure(let error):
-            errorMessage = "Network error: \(error.localizedDescription)"
+            errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .general)
         }
         
         isLoading = false

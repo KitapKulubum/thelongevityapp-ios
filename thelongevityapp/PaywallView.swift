@@ -212,7 +212,7 @@ struct PaywallView: View {
         .alert("Purchase Error", isPresented: $showError) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text(purchaseError ?? "Unable to complete purchase. Please try again.")
+            Text(purchaseError ?? "Unable to complete purchase. Please try again later.")
         }
         .alert("Log out?", isPresented: $showLogoutAlert) {
             Button("Cancel", role: .cancel) { }
@@ -334,29 +334,14 @@ struct PaywallView: View {
             await MainActor.run {
                 isPurchasing = false
                 
-                switch apiError {
-                case .httpError(_, let statusCode, let responseBody):
-                    if statusCode == 403 {
-                        purchaseError = "This endpoint is only available in development/test environments."
-                    } else if statusCode == 401 {
-                        purchaseError = "Your session has expired. Please log in again."
-                    } else {
-                        purchaseError = "Failed to activate test subscription. Please try again."
-                    }
-                    showError = true
-                case .networkError:
-                    purchaseError = "Network error. Please check your connection and try again."
-                    showError = true
-                default:
-                    purchaseError = "Failed to activate test subscription. Please try again."
-                    showError = true
-                }
+                purchaseError = ErrorMessageHelper.getContextualMessage(for: apiError, context: .subscription)
+                showError = true
             }
         } catch {
             print("[PaywallView] Test bypass failed with unknown error: \(error)")
             await MainActor.run {
                 isPurchasing = false
-                purchaseError = "Failed to activate test subscription. Please try again."
+                purchaseError = ErrorMessageHelper.getContextualMessage(for: error, context: .subscription)
                 showError = true
             }
         }

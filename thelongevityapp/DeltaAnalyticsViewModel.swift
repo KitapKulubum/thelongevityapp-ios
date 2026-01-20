@@ -73,27 +73,11 @@ class DeltaAnalyticsViewModel: ObservableObject {
         } catch let error as APIError {
             isLoading = false
             
-            // Provide specific error messages based on error type
-            switch error {
-            case .httpError(_, let statusCode, _):
-                if statusCode == 404 {
-                    errorMessage = "Delta analytics endpoint not available yet. Please check backend configuration."
-                } else if statusCode >= 500 {
-                    errorMessage = "Server error. Please try again later."
-                } else {
-                    errorMessage = "Couldn't load delta chart"
-                }
-            case .networkError:
-                errorMessage = "Network error. Please check your connection."
-            case .invalidResponse:
-                errorMessage = "Invalid response from server."
-            default:
-                errorMessage = "Couldn't load delta chart"
-            }
+            errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .general)
             
             print("[DeltaAnalyticsViewModel] Error fetching delta analytics: \(error)")
         } catch {
-            errorMessage = "Couldn't load delta chart"
+            errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .general)
             isLoading = false
             print("[DeltaAnalyticsViewModel] Error fetching delta analytics: \(error)")
         }

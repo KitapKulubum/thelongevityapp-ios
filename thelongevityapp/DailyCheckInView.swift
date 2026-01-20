@@ -352,11 +352,11 @@ struct DailyCheckInView: View {
                     // Backend returns 409 when user tries to check-in on the same day twice
                     if let nsError = error as NSError?,
                        nsError.code == 409 {
-                        self.alertMessage = "You have already completed today's check-in. Please try again tomorrow."
+                        self.alertMessage = "You've already completed today's check-in. Come back tomorrow!"
                         self.showAlert = true
                     } else {
-                    self.alertMessage = "Network error: \(error.localizedDescription)"
-                    self.showAlert = true
+                        self.alertMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .dailyCheckIn)
+                        self.showAlert = true
                     }
                 } else {
                     // Success - update ScoreViewModel immediately with latest state from AgeStore

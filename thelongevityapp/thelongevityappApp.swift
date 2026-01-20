@@ -487,18 +487,18 @@ struct RootView: View {
                     let isBackendError = isBackendConnectionError(error)
                     
                     if isBackendError {
-                        // Backend is down, allow offline mode with cached data
-                        print("[RootView] Backend unavailable, allowing offline mode")
-                        let errorMessage = getErrorMessage(for: error)
+                        // Backend is down, try to continue with cached data
+                        print("[RootView] Backend unavailable, attempting to continue with cached data")
+                        let errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .login)
                         await MainActor.run {
                             // Use Firebase user ID if available
                             if let firebaseUserId = authManager.uid {
                                 appState.userId = firebaseUserId
                             }
                             // Show error alert to user
-                            authErrorTitle = "Connection Error"
-                            authError = "\(errorMessage)\n\nYou can continue in offline mode, but some features may be limited."
-                            // Try to bootstrap with cached data (offline mode)
+                            authErrorTitle = "Connection Issue"
+                            authError = errorMessage
+                            // Try to bootstrap with cached data
                             Task {
                                 do {
                                     try await appState.bootstrap(requireBackend: false)
@@ -545,64 +545,7 @@ struct RootView: View {
     }
     
     private func getErrorMessage(for error: Error) -> String {
-        if let apiError = error as? APIError {
-            switch apiError {
-            case .networkError(_, let underlyingError):
-                if let urlError = underlyingError as? URLError {
-                    switch urlError.code {
-                    case .notConnectedToInternet, .networkConnectionLost:
-                        return "Please check your internet connection. Unable to reach the server."
-                    case .timedOut:
-                        return "Connection timed out. Please try again."
-                    default:
-                        return "Network error: \(underlyingError.localizedDescription)"
-                    }
-                } else if let nsError = underlyingError as NSError? {
-                    // Check for timeout error code (-1001)
-                    if nsError.code == NSURLErrorTimedOut {
-                        return "Connection timed out. Please try again."
-                    } else if nsError.code == NSURLErrorNotConnectedToInternet || nsError.code == NSURLErrorNetworkConnectionLost {
-                        return "Please check your internet connection. Unable to reach the server."
-                    } else if nsError.code == NSURLErrorCannotConnectToHost {
-                        return "Unable to connect to server. Please check if the server is running."
-                    }
-                }
-                return "Unable to connect to server. Please try again later."
-            case .httpError(_, let statusCode, _):
-                if statusCode == 401 {
-                    return "Invalid login credentials. Please check your email and password."
-                } else if statusCode >= 500 {
-                    return "Server error (\(statusCode)). Please try again later."
-                } else {
-                    return "Server error (\(statusCode)). Please try again."
-                }
-            case .missingAuthToken:
-                return "Session information not found. Please sign in again."
-            default:
-                return apiError.localizedDescription
-            }
-        } else if let authError = error as NSError?,
-                  let errorCode = AuthErrorCode(_bridgedNSError: authError) {
-            // Firebase Auth errors
-            switch errorCode.code {
-            case .invalidEmail:
-                return "Invalid email address. Please enter a valid email."
-            case .userNotFound:
-                return "No user found with this email address."
-            case .wrongPassword:
-                return "Incorrect password. Please check your password."
-            case .emailAlreadyInUse:
-                return "This email address is already in use. Please try signing in."
-            case .weakPassword:
-                return "Password is too weak. Please choose a stronger password."
-            case .networkError:
-                return "Please check your internet connection."
-            default:
-                return "Authentication error: \(error.localizedDescription)"
-            }
-        }
-        
-        return "An unexpected error occurred: \(error.localizedDescription)"
+        return ErrorMessageHelper.getMessage(for: error)
     }
     
     private func isAuthenticationError(_ error: Error) -> Bool {

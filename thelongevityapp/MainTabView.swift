@@ -2638,7 +2638,7 @@ struct TermsOfServiceView: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = "Unable to load Terms of Service. Please check your connection and try again."
+                    errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .general)
                     isLoading = false
                 }
             }
@@ -2688,7 +2688,7 @@ struct PrivacyPolicyView: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = "Unable to load Privacy Policy. Please check your connection and try again."
+                    errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .general)
                     isLoading = false
                 }
             }

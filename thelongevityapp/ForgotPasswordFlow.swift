@@ -302,7 +302,7 @@ struct ResetPasswordEmailView: View {
                 onContinue(email.trimmingCharacters(in: .whitespacesAndNewlines))
             }
         } catch {
-            errorMessage = "Failed to send code. Please try again."
+            errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .general)
             showConfirmation = false
         }
         
@@ -479,24 +479,22 @@ struct VerifyCodeView: View {
             )
             onVerified(response.resetToken)
         } catch let error as APIError {
-            switch error {
-            case .httpError(_, let statusCode, let responseBody):
-                if statusCode == 400 {
-                    if responseBody.contains("expired") || responseBody.contains("invalid") {
-                        errorMessage = "Code expired. Request a new one."
-                    } else {
-                        errorMessage = "Invalid code"
-                    }
+            // Try to parse backend message first
+            if case .httpError(_, let statusCode, let responseBody) = error {
+                if let backendMessage = ErrorMessageHelper.parseBackendError(responseBody) {
+                    errorMessage = backendMessage
+                } else if statusCode == 400 {
+                    errorMessage = "Invalid or expired code. Please request a new one."
                 } else if statusCode == 429 {
-                    errorMessage = "Too many attempts. Try again later."
+                    errorMessage = "Too many attempts. Please wait a moment and try again."
                 } else {
-                    errorMessage = "Invalid code"
+                    errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .general)
                 }
-            default:
-                errorMessage = "Invalid code"
+            } else {
+                errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .general)
             }
         } catch {
-            errorMessage = "Invalid code"
+            errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .general)
         }
         
         isLoading = false
@@ -510,7 +508,7 @@ struct VerifyCodeView: View {
             try await APIClient.shared.requestPasswordReset(email: email)
             startCountdown()
         } catch {
-            errorMessage = "Failed to resend code. Please try again."
+            errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .general)
         }
     }
     
@@ -775,7 +773,7 @@ struct NewPasswordView: View {
             // Handle backend password validation errors
             errorMessage = parsePasswordError(error)
         } catch {
-            errorMessage = "Failed to update password. Please try again."
+            errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .general)
         }
         
         isLoading = false

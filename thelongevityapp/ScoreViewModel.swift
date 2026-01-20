@@ -40,7 +40,7 @@ final class ScoreViewModel: ObservableObject {
             let summary = try await APIClient.shared.getSummary()
             apply(summary)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .general)
             print("[ScoreViewModel] Failed to fetch summary: \(error)")
         }
         

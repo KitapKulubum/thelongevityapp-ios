@@ -45,7 +45,7 @@ class TrendsViewModel: ObservableObject {
         do {
             trendsResponse = try await apiClient.fetchTrends()
         } catch {
-            errorMessage = "Failed to load trends. Please try again."
+            errorMessage = ErrorMessageHelper.getContextualMessage(for: error, context: .general)
             print("[TrendsViewModel] Trends fetch error: \(error)")
         }
         

@@ -345,7 +345,7 @@ class ChatViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    let errorMsg = "Couldn't save. Please try again."
+                    let errorMsg = ErrorMessageHelper.getContextualMessage(for: error, context: .onboarding)
                     submitState = .failed(errorMessage: errorMsg)
                     
                     let errorMessage = ChatMessage(
@@ -459,7 +459,7 @@ class ChatViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    let errorMsg = "Couldn't save. Please try again."
+                    let errorMsg = ErrorMessageHelper.getContextualMessage(for: error, context: .onboarding)
                     submitState = .failed(errorMessage: errorMsg)
                     
                     let errorMessage = ChatMessage(
@@ -608,27 +608,7 @@ class ChatViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    let errorMsg: String
-                    if error is DecodingError {
-                        errorMsg = "Server returned invalid data format. Please try again later."
-                    } else if let apiError = error as? APIError {
-                        switch apiError {
-                        case .invalidResponse:
-                            errorMsg = "Server returned invalid data format. Please try again later."
-                        case .networkError:
-                            errorMsg = "Network error. Please check your connection and try again."
-                        case .httpError(_, let statusCode, _):
-                            if statusCode >= 500 {
-                                errorMsg = "Server error. Please try again later."
-                            } else {
-                                errorMsg = "Couldn't save. Please try again."
-                            }
-                        default:
-                            errorMsg = "Couldn't save. Please try again."
-                        }
-                    } else {
-                        errorMsg = "Couldn't save. Please try again."
-                    }
+                    let errorMsg = ErrorMessageHelper.getContextualMessage(for: error, context: .onboarding)
                     
                     submitState = .failed(errorMessage: errorMsg)
                     
@@ -703,27 +683,7 @@ class ChatViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    let errorMsg: String
-                    if error is DecodingError {
-                        errorMsg = "Server returned invalid data format. Please try again later."
-                    } else if let apiError = error as? APIError {
-                        switch apiError {
-                        case .invalidResponse:
-                            errorMsg = "Server returned invalid data format. Please try again later."
-                        case .networkError:
-                            errorMsg = "Network error. Please check your connection and try again."
-                        case .httpError(_, let statusCode, _):
-                            if statusCode >= 500 {
-                                errorMsg = "Server error. Please try again later."
-                            } else {
-                                errorMsg = "Couldn't save. Please try again."
-                            }
-                        default:
-                            errorMsg = "Couldn't save. Please try again."
-                        }
-                    } else {
-                        errorMsg = "Couldn't save. Please try again."
-                    }
+                    let errorMsg = ErrorMessageHelper.getContextualMessage(for: error, context: .onboarding)
                     
                     submitState = .failed(errorMessage: errorMsg)
                     
@@ -791,7 +751,7 @@ class ChatViewModel: ObservableObject {
                 case .failure(_):
                     let errorMessage = ChatMessage(
                         role: .assistant,
-                        text: "Sorry, I couldn't process that. Please try again.",
+                        text: "I'm having trouble processing that. Please try again.",
                         timestamp: Date()
                     )
                     self?.messages.append(errorMessage)

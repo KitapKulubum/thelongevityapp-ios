@@ -13,16 +13,18 @@ enum PasswordValidationResult {
     case tooWeak
     case policyViolation
     
+    @MainActor
     var message: String {
+        let languageManager = LanguageManager.shared
         switch self {
         case .valid:
-            return "Looks good."
+            return languageManager.localized("Looks good.")
         case .tooShort:
-            return "Try a slightly stronger password — at least 8 characters."
+            return languageManager.localized("Try a slightly stronger password — at least 8 characters.")
         case .tooWeak:
-            return "This password is easy to guess. Try adding more characters."
+            return languageManager.localized("This password is easy to guess. Try adding more characters.")
         case .policyViolation:
-            return "This password is easy to guess. Try adding more characters."
+            return languageManager.localized("This password is easy to guess. Try adding more characters.")
         }
     }
 }

@@ -37,7 +37,7 @@ struct ErrorMessageHelper {
         // Handle Firebase Auth errors
         if let nsError = error as NSError?,
            let errorCode = AuthErrorCode(_bridgedNSError: nsError) {
-            return getFirebaseAuthMessage(for: errorCode.code)
+            return getFirebaseAuthMessage(for: errorCode)
         }
         
         // Generic error
@@ -47,13 +47,13 @@ struct ErrorMessageHelper {
     /// Returns user-friendly error message for APIError
     static func getMessage(for apiError: APIError) -> String {
         switch apiError {
-        case .invalidURL(let endpoint):
+        case .invalidURL(_):
             return "Invalid request. Please try again."
             
-        case .invalidResponse(let endpoint):
+        case .invalidResponse(_):
             return "We received an unexpected response. Please try again later."
             
-        case .httpError(let endpoint, let statusCode, let responseBody):
+        case .httpError(_, let statusCode, let responseBody):
             // Try to parse backend message first
             if let backendMessage = parseBackendError(responseBody) {
                 return backendMessage
@@ -135,8 +135,8 @@ struct ErrorMessageHelper {
     }
     
     /// Returns user-friendly Firebase Auth error message
-    static func getFirebaseAuthMessage(for errorCode: AuthErrorCode.Code) -> String {
-        switch errorCode {
+    static func getFirebaseAuthMessage(for errorCode: AuthErrorCode) -> String {
+        switch errorCode.code {
         case .invalidEmail:
             return "Please enter a valid email address."
         case .userNotFound:

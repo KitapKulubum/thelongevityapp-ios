@@ -44,6 +44,7 @@ class AppState: ObservableObject {
     @Published var userLastName: String?
     @Published var userChronologicalAge: Double?
     @Published var userTimezone: String?  // IANA timezone identifier
+    @Published var userPreferredLanguage: String?  // Language code (e.g., "tr", "en", "es")
     
     private let userDefaults = UserDefaults.standard
     private var hasCompletedOnboardingKey: String {
@@ -59,6 +60,7 @@ class AppState: ObservableObject {
     private let userLastNameKey = "userLastName"
     private let userChronologicalAgeKey = "userChronologicalAge"
     private let userTimezoneKey = "userTimezone"
+    private let userPreferredLanguageKey = "userPreferredLanguage"
     
     init(userId: String) {
         self.userId = userId
@@ -69,14 +71,18 @@ class AppState: ObservableObject {
             self.userChronologicalAge = userDefaults.double(forKey: userChronologicalAgeKey)
         }
         self.userTimezone = userDefaults.string(forKey: userTimezoneKey)
+        self.userPreferredLanguage = userDefaults.string(forKey: userPreferredLanguageKey)
     }
     
-    func updateUserProfile(firstName: String?, lastName: String?, chronologicalAge: Double?, timezone: String? = nil) {
+    func updateUserProfile(firstName: String?, lastName: String?, chronologicalAge: Double?, timezone: String? = nil, preferredLanguage: String? = nil) {
         userFirstName = firstName
         userLastName = lastName
         userChronologicalAge = chronologicalAge
         if let timezone = timezone {
             userTimezone = timezone
+        }
+        if let preferredLanguage = preferredLanguage {
+            userPreferredLanguage = preferredLanguage
         }
         
         if let firstName = firstName {
@@ -99,6 +105,12 @@ class AppState: ObservableObject {
         
         if let timezone = timezone {
             userDefaults.set(timezone, forKey: userTimezoneKey)
+        }
+        
+        if let preferredLanguage = preferredLanguage {
+            userDefaults.set(preferredLanguage, forKey: userPreferredLanguageKey)
+        } else {
+            userDefaults.removeObject(forKey: userPreferredLanguageKey)
         }
     }
     

@@ -10,6 +10,7 @@ import SwiftUI
 struct DailyCheckInView: View {
     @EnvironmentObject private var ageStore: AgeStore
     @EnvironmentObject private var scoreViewModel: ScoreViewModel
+    @StateObject private var languageManager = LanguageManager.shared
     @State private var sleepHours: Double = 7.0
     @State private var stepsText: String = ""
     @State private var vigorousMinutesText: String = ""
@@ -36,7 +37,7 @@ struct DailyCheckInView: View {
                 
                 ScrollView {
                     VStack(spacing: 32) {
-                        Text("Today's Longevity Check-In")
+                        Text(languageManager.localized("Today's Longevity Check-In"))
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                             .foregroundColor(.primary)
                             .padding(.top, 20)
@@ -44,7 +45,7 @@ struct DailyCheckInView: View {
                         VStack(spacing: 24) {
                             // Sleep Hours
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Sleep Hours")
+                                Text(languageManager.localized("Sleep Hours"))
                                     .font(.system(size: 16, weight: .medium, design: .rounded))
                                     .foregroundColor(.primary)
                                 
@@ -61,7 +62,7 @@ struct DailyCheckInView: View {
                                         .foregroundColor(.secondary)
                                 }
                                 
-                                Text("\(sleepHours, specifier: "%.1f") hours")
+                                Text("\(sleepHours, specifier: "%.1f") \(languageManager.localized("hours"))")
                                     .font(.system(size: 14, weight: .regular, design: .rounded))
                                     .foregroundColor(.secondary)
                             }
@@ -73,11 +74,11 @@ struct DailyCheckInView: View {
                             
                             // Steps
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Steps")
+                                Text(languageManager.localized("Steps"))
                                     .font(.system(size: 16, weight: .medium, design: .rounded))
                                     .foregroundColor(.primary)
                                 
-                                TextField("Enter steps", text: $stepsText)
+                                TextField(languageManager.localized("Enter steps"), text: $stepsText)
                                     .font(.system(size: 16, weight: .regular, design: .rounded))
                                     .keyboardType(.numberPad)
                                     .padding()
@@ -98,11 +99,11 @@ struct DailyCheckInView: View {
                             
                             // Vigorous Minutes
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Vigorous Minutes")
+                                Text(languageManager.localized("Vigorous Minutes"))
                                     .font(.system(size: 16, weight: .medium, design: .rounded))
                                     .foregroundColor(.primary)
                                 
-                                TextField("Enter minutes", text: $vigorousMinutesText)
+                                TextField(languageManager.localized("Enter minutes"), text: $vigorousMinutesText)
                                     .font(.system(size: 16, weight: .regular, design: .rounded))
                                     .keyboardType(.numberPad)
                                     .padding()
@@ -123,7 +124,7 @@ struct DailyCheckInView: View {
                             
                             // Stress Level
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Stress Level")
+                                Text(languageManager.localized("Stress Level"))
                                     .font(.system(size: 16, weight: .medium, design: .rounded))
                                     .foregroundColor(.primary)
                                 
@@ -152,7 +153,7 @@ struct DailyCheckInView: View {
                             
                             // Late Caffeine
                             HStack {
-                                Text("Late Caffeine")
+                                Text(languageManager.localized("Late Caffeine"))
                                     .font(.system(size: 16, weight: .medium, design: .rounded))
                                     .foregroundColor(.primary)
                                 
@@ -169,7 +170,7 @@ struct DailyCheckInView: View {
                             
                             // Late Screen Usage
                             HStack {
-                                Text("Late Screen Usage")
+                                Text(languageManager.localized("Late Screen Usage"))
                                     .font(.system(size: 16, weight: .medium, design: .rounded))
                                     .foregroundColor(.primary)
                                 

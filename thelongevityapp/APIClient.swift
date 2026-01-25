@@ -58,6 +58,7 @@ final class APIClient {
         )
         urlRequest.httpBody = try JSONEncoder().encode(request)
         addAuthHeader(&urlRequest, token: idToken)
+        await addLanguageHeader(&urlRequest)
         return try await perform(urlRequest, as: AuthProfileResponse.self, endpoint: "/api/auth/me")
     }
     
@@ -70,6 +71,7 @@ final class APIClient {
         if let token = try? await AuthManager.shared.getIDToken() {
             addAuthHeader(&urlRequest, token: token)
         }
+        await addLanguageHeader(&urlRequest)
         _ = try await perform(urlRequest, as: EmptyResponse.self, endpoint: "/api/auth/logout")
     }
     
@@ -91,11 +93,11 @@ final class APIClient {
         return try await perform(urlRequest, as: StatsSummaryResponse.self, endpoint: "/api/stats/summary")
     }
     
-    func patchProfile(timezone: String) async throws -> AuthProfileResponse {
+    func patchProfile(timezone: String? = nil, preferredLanguage: String? = nil) async throws -> AuthProfileResponse {
         let url = baseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("profile")
         var urlRequest = try await authorizedRequest(url: url, method: "PATCH", body: nil as Data?)
         
-        let requestBody = ProfileUpdateRequest(timezone: timezone)
+        let requestBody = ProfileUpdateRequest(timezone: timezone, preferredLanguage: preferredLanguage)
         urlRequest.httpBody = try JSONEncoder().encode(requestBody)
         
         return try await perform(urlRequest, as: AuthProfileResponse.self, endpoint: "/api/auth/profile")
@@ -172,6 +174,7 @@ final class APIClient {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        await addLanguageHeader(&urlRequest)
         
         let request = PasswordResetRequestRequest(email: email)
         urlRequest.httpBody = try JSONEncoder().encode(request)
@@ -184,6 +187,7 @@ final class APIClient {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        await addLanguageHeader(&urlRequest)
         
         let request = PasswordResetVerifyRequest(email: email, code: code)
         urlRequest.httpBody = try JSONEncoder().encode(request)
@@ -196,6 +200,7 @@ final class APIClient {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        await addLanguageHeader(&urlRequest)
         
         let request = PasswordResetConfirmRequest(resetToken: resetToken, newPassword: newPassword)
         urlRequest.httpBody = try JSONEncoder().encode(request)
@@ -209,6 +214,7 @@ final class APIClient {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "GET"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        await addLanguageHeader(&urlRequest)
         
         return try await perform(urlRequest, as: PrivacyPolicyResponse.self, endpoint: "/api/legal/privacy")
     }
@@ -218,6 +224,7 @@ final class APIClient {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "GET"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        await addLanguageHeader(&urlRequest)
         
         return try await perform(urlRequest, as: TermsOfServiceResponse.self, endpoint: "/api/legal/terms")
     }
@@ -321,6 +328,7 @@ private extension APIClient {
         }
         let token = try await AuthManager.shared.getIDToken()
         addAuthHeader(&request, token: token)
+        await addLanguageHeader(&request)
         return request
     }
     
@@ -332,11 +340,20 @@ private extension APIClient {
         request.httpBody = body
         let token = try await AuthManager.shared.getIDToken()
         addAuthHeader(&request, token: token)
+        await addLanguageHeader(&request)
         return request
     }
     
     func addAuthHeader(_ request: inout URLRequest, token: String) {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+    
+    /// Adds X-Language header to request based on current language preference
+    func addLanguageHeader(_ request: inout URLRequest) async {
+        let languageCode = await MainActor.run {
+            LanguageManager.shared.currentLanguageCode
+        }
+        request.setValue(languageCode, forHTTPHeaderField: "X-Language")
     }
     
     private func printDecodingError(_ error: DecodingError, endpoint: String) {
@@ -435,16 +452,18 @@ struct AuthMeRequest: Codable {
 }
 
 struct AuthProfileResponse: Codable {
-    let uid: String
+    let uid: String?  // Optional because PATCH /api/auth/profile may not return uid
     let email: String?
-    let hasCompletedOnboarding: Bool
+    let hasCompletedOnboarding: Bool?
     let profile: ProfileInfo?
+    let locale: String?  // Language code (e.g., "tr", "en", "es")
     
     struct ProfileInfo: Codable {
         let firstName: String?
         let lastName: String?
         let chronologicalAgeYears: Double?
         let timezone: String?  // IANA timezone identifier (e.g., "Europe/Istanbul")
+        let preferredLanguage: String?  // Language code (e.g., "tr", "en", "es")
     }
 }
 
@@ -453,7 +472,8 @@ struct EmptyResponse: Codable {
 }
 
 struct ProfileUpdateRequest: Codable {
-    let timezone: String  // IANA timezone identifier
+    let timezone: String?  // IANA timezone identifier
+    let preferredLanguage: String?  // Language code (e.g., "tr", "en", "es")
 }
 
 // MARK: - Password Reset DTOs

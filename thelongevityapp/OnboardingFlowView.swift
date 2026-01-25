@@ -10,6 +10,7 @@ import SwiftUI
 struct OnboardingFlowView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: ChatViewModel
+    @StateObject private var languageManager = LanguageManager.shared
     @State private var chatMessage: String = ""
     
     init() {
@@ -36,9 +37,9 @@ struct OnboardingFlowView: View {
                 VStack {
                     Spacer()
                     VStack(spacing: 12) {
-                        Text("The Longevity App is ready.")
+                        Text(languageManager.localized("The Longevity App is ready."))
                             .font(.system(size: 20, weight: .medium))
-                        Text("Let's optimize your healthspan.")
+                        Text(languageManager.localized("Let's optimize your healthspan."))
                             .font(.system(size: 20, weight: .medium))
                     }
                     .foregroundColor(.white.opacity(0.9))

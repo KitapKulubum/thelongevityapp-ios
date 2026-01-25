@@ -13,6 +13,7 @@ struct PaywallView: View {
     @StateObject private var authManager = AuthManager.shared
     @StateObject private var storeManager = StoreManager.shared
     @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @StateObject private var languageManager = LanguageManager.shared
     
     @State private var selectedPlan: SubscriptionPlan = .monthly
     @State private var isPurchasing: Bool = false
@@ -78,7 +79,7 @@ struct PaywallView: View {
                     
                     // Header
                     VStack(spacing: 12) {
-                        Text("Longevity Premium")
+                        Text(languageManager.localized("Longevity Premium"))
                             .font(.system(size: 32, weight: .semibold))
                             .foregroundColor(.white)
                         
@@ -133,7 +134,7 @@ struct PaywallView: View {
                                     .tint(.black)
                                     .scaleEffect(0.8)
                             } else {
-                                Text("Continue")
+                                Text(languageManager.localized("Continue"))
                                     .font(.system(size: 17, weight: .semibold))
                             }
                         }
@@ -154,7 +155,7 @@ struct PaywallView: View {
                         Button {
                             restorePurchases()
                         } label: {
-                            Text("Restore purchases")
+                            Text(languageManager.localized("Restore purchases"))
                                 .font(.system(size: 15, weight: .regular))
                                 .foregroundColor(.white.opacity(0.6))
                         }
@@ -163,7 +164,7 @@ struct PaywallView: View {
                         Button {
                             showLogoutAlert = true
                         } label: {
-                            Text("Log out")
+                            Text(languageManager.localized("Log out"))
                                 .font(.system(size: 15, weight: .regular))
                                 .foregroundColor(.white.opacity(0.5))
                         }
@@ -181,7 +182,7 @@ struct PaywallView: View {
                             Button {
                                 showTerms = true
                             } label: {
-                                Text("Terms of Service")
+                                Text(languageManager.localized("Terms of Service"))
                                     .font(.system(size: 11, weight: .regular))
                                     .foregroundColor(.white.opacity(0.3))
                             }
@@ -193,7 +194,7 @@ struct PaywallView: View {
                             Button {
                                 showPrivacy = true
                             } label: {
-                                Text("Privacy Policy")
+                                Text(languageManager.localized("Privacy Policy"))
                                     .font(.system(size: 11, weight: .regular))
                                     .foregroundColor(.white.opacity(0.3))
                             }

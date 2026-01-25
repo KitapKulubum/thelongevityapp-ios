@@ -15,6 +15,7 @@ enum AuthMode {
 
 struct AuthLandingView: View {
     @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @StateObject private var languageManager = LanguageManager.shared
     
     @State private var mode: AuthMode
     @State private var email: String = ""
@@ -24,7 +25,6 @@ struct AuthLandingView: View {
     @State private var dateOfBirth: Date = Calendar.current.date(byAdding: .year, value: -30, to: Date()) ?? Date()
     @State private var agreeTerms: Bool = false
     @State private var isLoading: Bool = false
-    @State private var signupStep: Int = 1 // 1 = Basics, 2 = Account
     @State private var showForgotPassword: Bool = false
     @State private var showPrivacyPolicy: Bool = false
     @State private var showTermsOfService: Bool = false
@@ -63,21 +63,21 @@ struct AuthLandingView: View {
                 formFields
                     .padding(.horizontal, 24)
                 
-                // Checkbox only shown in signup step 2
-                if mode == .signup && signupStep == 2 {
+                // Checkbox for signup
+                if mode == .signup {
                     HStack(alignment: .top, spacing: 10) {
                         CheckCircle(isOn: $agreeTerms)
                         
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 4) {
-                                Text("I agree to the")
+                                Text(languageManager.localized("I agree to the"))
                                     .font(.system(size: 13, weight: .regular))
                                     .foregroundColor(.white.opacity(0.7))
                                 
                                 Button {
                                     showPrivacyPolicy = true
                                 } label: {
-                                    Text("Privacy Policy")
+                                    Text(languageManager.localized("Privacy Policy"))
                                         .font(.system(size: 13, weight: .medium))
                                         .foregroundColor(Color.primaryGreen)
                                         .underline()
@@ -90,7 +90,7 @@ struct AuthLandingView: View {
                                 Button {
                                     showTermsOfService = true
                                 } label: {
-                                    Text("Terms of Service")
+                                    Text(languageManager.localized("Terms of Service"))
                                         .font(.system(size: 13, weight: .medium))
                                         .foregroundColor(Color.primaryGreen)
                                         .underline()
@@ -101,8 +101,6 @@ struct AuthLandingView: View {
                         Spacer()
                     }
                     .padding(.horizontal, 32)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: signupStep)
                 }
                 
                 primaryButton
@@ -165,105 +163,88 @@ struct AuthLandingView: View {
                     .clipShape(Circle())
             }
             
-            Text("The Longevity App")
+            Text(languageManager.localized("The Longevity App"))
                 .font(.system(size: 28, weight: .semibold))
                 .kerning(1.2)
                 .foregroundColor(.white)
             
-            Text(mode == .login ? "Continue your longevity journey." : "Create your longevity profile")
+            Text(mode == .login ? languageManager.localized("Continue your longevity journey.") : languageManager.localized("Create your longevity profile"))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.white.opacity(0.6))
         }
     }
     
+    @ViewBuilder
     private var formFields: some View {
-        ZStack {
-            // Step 1: Basics (First name, Date of birth)
-            if mode == .signup && signupStep == 1 {
-                VStack(alignment: .leading, spacing: 24) {
-                    GlassTextField(
-                        title: "First name",
-                        placeholder: "John",
-                        text: $firstName,
-                        icon: "person"
+        if mode == .signup {
+            // Signup: All fields in one page
+            VStack(spacing: 24) {
+                GlassTextField(
+                    title: languageManager.localized("First name"),
+                    placeholder: "John",
+                    text: $firstName,
+                    icon: "person"
+                )
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    GlassDatePicker(
+                        title: languageManager.localized("Date of birth"),
+                        date: $dateOfBirth
                     )
                     
-                    VStack(alignment: .leading, spacing: 4) {
-                        GlassDatePicker(
-                            title: "Date of birth",
-                            date: $dateOfBirth
-                        )
-                        
-                        Text("Used to calculate your biological age.")
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(.white.opacity(0.5))
-                            .padding(.leading, 4)
-                            .padding(.top, 2)
-                    }
+                    Text(languageManager.localized("Used to calculate your biological age."))
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(.white.opacity(0.5))
+                        .padding(.leading, 4)
+                        .padding(.top, 2)
                 }
-                .transition(.asymmetric(
-                    insertion: .move(edge: .leading).combined(with: .opacity),
-                    removal: .move(edge: .trailing).combined(with: .opacity)
-                ))
+                
+                GlassTextField(
+                    title: languageManager.localized("Email address"),
+                    placeholder: "user@example.com",
+                    text: $email,
+                    icon: "envelope"
+                )
+                
+                GlassSecureField(
+                    title: languageManager.localized("Create password"),
+                    placeholder: "•••••••",
+                    text: $password,
+                    icon: "eye.slash",
+                    helperText: languageManager.localized("A strong password helps protect your longevity data."),
+                    showValidation: true,
+                    email: email.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
             }
-            
-            // Step 2: Account (Email, Password)
-            if mode == .signup && signupStep == 2 {
-                VStack(spacing: 24) {
-                    GlassTextField(
-                        title: "Email address",
-                        placeholder: "user@example.com",
-                        text: $email,
-                        icon: "envelope"
-                    )
-                    
+        } else {
+            // Login fields
+            VStack(spacing: 24) {
+                GlassTextField(
+                    title: languageManager.localized("Email address"),
+                    placeholder: "user@example.com",
+                    text: $email,
+                    icon: "envelope"
+                )
+                
+                VStack(alignment: .leading, spacing: 8) {
                     GlassSecureField(
-                        title: "Create password",
+                        title: languageManager.localized("Create password"),
                         placeholder: "•••••••",
                         text: $password,
-                        icon: "eye.slash",
-                        helperText: "A strong password helps protect your longevity data.",
-                        showValidation: true,
-                        email: email.trimmingCharacters(in: .whitespacesAndNewlines)
-                    )
-                }
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing).combined(with: .opacity),
-                    removal: .move(edge: .leading).combined(with: .opacity)
-                ))
-            }
-            
-            // Login fields
-            if mode == .login {
-                VStack(spacing: 24) {
-                    GlassTextField(
-                        title: "Email address",
-                        placeholder: "user@example.com",
-                        text: $email,
-                        icon: "envelope"
+                        icon: "eye.slash"
                     )
                     
-                    VStack(alignment: .leading, spacing: 8) {
-                        GlassSecureField(
-                            title: "Password",
-                            placeholder: "•••••••",
-                            text: $password,
-                            icon: "eye.slash"
-                        )
-                        
-                        Button(action: {
-                            showForgotPassword = true
-                        }) {
-                            Text("Forgot password?")
-                                .font(.system(size: 12, weight: .regular))
-                                .foregroundColor(.white.opacity(0.6))
-                        }
-                        .padding(.leading, 4)
+                    Button(action: {
+                        showForgotPassword = true
+                    }) {
+                        Text(languageManager.localized("Forgot password?"))
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(.white.opacity(0.6))
                     }
+                    .padding(.leading, 4)
                 }
             }
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: signupStep)
     }
     
     private var primaryButton: some View {
@@ -273,12 +254,9 @@ struct AuthLandingView: View {
                 return email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || 
                        password.isEmpty
             } else {
-                // Signup step 1: Need first name
-                if signupStep == 1 {
-                    return firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                }
-                // Signup step 2: Need email, password, and terms agreement
-                return email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || 
+                // Signup: Need first name, email, password, and terms agreement
+                return firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                       email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || 
                        password.isEmpty || 
                        !agreeTerms
             }
@@ -286,31 +264,24 @@ struct AuthLandingView: View {
         
         var buttonText: String {
             if mode == .login {
-                return "Continue"
+                return languageManager.localized("Continue")
             } else {
-                return signupStep == 1 ? "Continue" : "Create account"
+                return languageManager.localized("Create account")
             }
         }
         
         return Button {
             guard !isLoading else { return }
             
-            if mode == .signup && signupStep == 1 {
-                // Move to step 2
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
-                    signupStep = 2
+            // Submit form
+            isLoading = true
+            Task { @MainActor in
+                if mode == .signup {
+                    onContinue?(mode, email.trimmingCharacters(in: .whitespacesAndNewlines), password, firstName.trimmingCharacters(in: .whitespacesAndNewlines), nil, dateOfBirth)
+                } else {
+                    onContinue?(mode, email.trimmingCharacters(in: .whitespacesAndNewlines), password, nil, nil, nil)
                 }
-            } else {
-                // Submit form
-                isLoading = true
-                Task { @MainActor in
-                    if mode == .signup {
-                        onContinue?(mode, email.trimmingCharacters(in: .whitespacesAndNewlines), password, firstName.trimmingCharacters(in: .whitespacesAndNewlines), nil, dateOfBirth)
-                    } else {
-                        onContinue?(mode, email.trimmingCharacters(in: .whitespacesAndNewlines), password, nil, nil, nil)
-                    }
-                    isLoading = false
-                }
+                isLoading = false
             }
         } label: {
             HStack {
@@ -352,34 +323,30 @@ struct AuthLandingView: View {
             if mode == .login {
                 Button {
                     mode = .signup
-                    signupStep = 1 // Reset to step 1 when switching to signup
                 } label: {
                     HStack(spacing: 4) {
-                        Text("Don't have an account?")
+                        Text(languageManager.localized("Don't have an account?"))
                             .font(.system(size: 13, weight: .regular))
                             .foregroundColor(.white.opacity(0.5))
-                        Text("Sign Up")
+                        Text(languageManager.localized("Sign Up"))
                             .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.white.opacity(0.6))
                     }
                 }
-            } else if signupStep == 2 {
-                // Show "Already have an account?" only in step 2
+            } else {
+                // Show "Already have an account?" in signup
                 Button {
                     mode = .login
-                    signupStep = 1 // Reset signup step
                 } label: {
                     HStack(spacing: 4) {
-                        Text("Already have an account?")
+                        Text(languageManager.localized("Already have an account?"))
                             .font(.system(size: 13, weight: .regular))
                             .foregroundColor(.white.opacity(0.5))
-                        Text("Sign In")
+                        Text(languageManager.localized("Sign In"))
                             .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.white.opacity(0.6))
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: signupStep)
             }
         }
     }

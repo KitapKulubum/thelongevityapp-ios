@@ -89,10 +89,30 @@ struct MainTabView: View {
                 UITabBar.appearance().standardAppearance = appearance
                 UITabBar.appearance().scrollEdgeAppearance = appearance
                 
+                // Hide tab bar during onboarding
+                if isOnboarding {
+                    DispatchQueue.main.async {
+                        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                           let window = windowScene.windows.first,
+                           let tabBarController = window.rootViewController?.findTabBarController() {
+                            tabBarController.tabBar.isHidden = true
+                        }
+                    }
+                }
+                
                 handleOnAppear(isOnboarding: isOnboarding)
             }
             .onChange(of: appState.hasCompletedOnboarding) { oldValue, newValue in
                 handleOnboardingChange(oldValue: oldValue, newValue: newValue)
+                
+                // Show/hide tab bar based on onboarding status
+                DispatchQueue.main.async {
+                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                       let window = windowScene.windows.first,
+                       let tabBarController = window.rootViewController?.findTabBarController() {
+                        tabBarController.tabBar.isHidden = !newValue
+                    }
+                }
             }
             .onChange(of: appState.activeTab) { oldValue, newValue in
                 // Prevent tab switching during onboarding
@@ -231,9 +251,15 @@ struct AICoachView: View {
     }
 
     var body: some View {
+        // If onboarding not completed, force onboarding mode and hide AI screen
+        // Note: Mode change is handled in onAppear to avoid publishing changes during view updates
+        if !appState.hasCompletedOnboarding {
+            return buildBody(isDailyMode: false, isEmptyDaily: false, isOnboarding: true)
+        }
+        
         let isDailyMode = viewModel.mode == .daily
         let isEmptyDaily = viewModel.messages.isEmpty && viewModel.mode == .daily
-        let isOnboarding = !appState.hasCompletedOnboarding || viewModel.mode == .onboarding
+        let isOnboarding = viewModel.mode == .onboarding
         
         return buildBody(isDailyMode: isDailyMode, isEmptyDaily: isEmptyDaily, isOnboarding: isOnboarding)
     }
@@ -256,18 +282,34 @@ struct AICoachView: View {
             // Update viewModel's appState reference to use environment object
             viewModel.appState = appState
             
-            // Start onboarding if not completed and messages are empty
-            if !appState.hasCompletedOnboarding && viewModel.messages.isEmpty {
-                print("[AICoachView] Starting onboarding - mode: \(viewModel.mode), messages count: \(viewModel.messages.count)")
-                // Ensure mode is onboarding
-                if viewModel.mode != .onboarding {
-                    viewModel.mode = .onboarding
+            // If onboarding not completed, immediately set mode to onboarding and start
+            if !appState.hasCompletedOnboarding {
+                print("[AICoachView] Onboarding not completed - forcing onboarding mode")
+                // Force onboarding mode immediately (before any UI renders)
+                viewModel.mode = .onboarding
+                
+                // Start onboarding if messages are empty
+                if viewModel.messages.isEmpty {
+                    print("[AICoachView] Starting onboarding - mode: \(viewModel.mode), messages count: \(viewModel.messages.count)")
+                    viewModel.startOnboarding()
                 }
-                viewModel.startOnboarding()
+            } else {
+                // Update daily check-in state on appear (only if onboarding completed)
+                updateDailyCheckInState()
             }
-            
-            // Update daily check-in state on appear
-            updateDailyCheckInState()
+        }
+        .onChange(of: appState.hasCompletedOnboarding) { oldValue, newValue in
+            // When onboarding status changes, update mode accordingly
+            if !newValue && viewModel.mode != .onboarding {
+                // Onboarding not completed - force onboarding mode
+                viewModel.mode = .onboarding
+                if viewModel.messages.isEmpty {
+                    viewModel.startOnboarding()
+                }
+            } else if newValue && viewModel.mode == .onboarding {
+                // Onboarding completed - switch to daily mode
+                viewModel.mode = .daily
+            }
         }
     }
     
@@ -477,7 +519,7 @@ struct AICoachView: View {
                                         }
                                         .padding(.top, 4)
                                         .opacity(viewModel.isChatDisabled ? 0.4 : 1.0)
-    }
+                                    }
     
     @ViewBuilder
     private func onboardingOptionsView(question: OnboardingQuestion) -> some View {
@@ -1928,8 +1970,8 @@ struct ProfileView: View {
             Button(languageManager.localized("Bypass Verify (Test)"), role: .none) {
                 Task {
                     await handleBypassVerify()
-                }
             }
+        }
         } message: {
             Text(languageManager.localized("Email verification is required to delete your account. Please verify your email first, or use the bypass button for testing."))
         }
@@ -2029,13 +2071,13 @@ struct ProfileView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(Color.primaryGreen)
                 .frame(width: 16)
-            
+                            
             Text(text)
                 .font(.system(size: 13, weight: .regular))
                 .foregroundColor(.white.opacity(0.7))
         }
-    }
-    
+                        }
+                        
     // MARK: - Language Card (Secondary)
     private var languageCard: some View {
         Menu {
@@ -2099,9 +2141,9 @@ struct ProfileView: View {
                 }
                 .padding(20)
             }
-        }
-    }
-    
+                            }
+                        }
+                        
     // MARK: - Legal Section (Settings list format)
     private var legalSection: some View {
         VStack(spacing: 0) {
@@ -2110,7 +2152,7 @@ struct ProfileView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "doc.text")
                             .font(.system(size: 14, weight: .regular))
-                            .foregroundColor(.white.opacity(0.4))
+                                .foregroundColor(.white.opacity(0.4))
                             .frame(width: 16)
                         
                         Text(languageManager.localized("Terms of Service"))
@@ -2230,9 +2272,9 @@ struct ProfileView: View {
                                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
-        )
-    }
+                                )
+                        )
+                    }
     
     // MARK: - Account Actions (Bottom, de-emphasized)
     private var accountActions: some View {
@@ -3089,7 +3131,7 @@ struct OnboardingProgressBar: View {
             // Progress text
             HStack {
                 let languageManager = LanguageManager.shared
-                Text("\(languageManager.localized("Question")) \(currentQuestionIndex) of \(totalQuestions)")
+                Text("\(languageManager.localized("Question")) \(currentQuestionIndex) / \(totalQuestions)")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.white.opacity(0.6))
                 Spacer()
@@ -3127,7 +3169,7 @@ struct DailyCheckInPinnedCard: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
 
-                    Spacer()
+                Spacer()
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 14)
@@ -3651,5 +3693,20 @@ struct DeltaChartErrorView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Helper Extension
+extension UIViewController {
+    func findTabBarController() -> UITabBarController? {
+        if let tabBarController = self as? UITabBarController {
+            return tabBarController
+        }
+        for child in children {
+            if let tabBarController = child.findTabBarController() {
+                return tabBarController
+            }
+        }
+        return nil
     }
 }

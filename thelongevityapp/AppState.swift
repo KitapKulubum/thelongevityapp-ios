@@ -337,7 +337,7 @@ class AppState: ObservableObject {
     func updateSubscriptionStatus(from response: AuthProfileResponse) {
         // TODO: Subscription status will be updated when backend adds subscription field to AuthProfileResponse
         // For now, keep current status or set to inactive
-        self.subscriptionStatus = .inactive
+            self.subscriptionStatus = .inactive
     }
 }
 

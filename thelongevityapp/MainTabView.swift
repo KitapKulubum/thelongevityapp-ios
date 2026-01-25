@@ -12,6 +12,7 @@ import UIKit
 struct MainTabView: View {
     @StateObject private var scoreViewModel = ScoreViewModel()
     @EnvironmentObject private var appState: AppState
+    @StateObject private var languageManager = LanguageManager.shared
     @State private var showMembershipAfterOnboarding: Bool = false
     @State private var hasShownMembershipAfterOnboarding: Bool = false
     
@@ -25,21 +26,21 @@ struct MainTabView: View {
         let aiTab = AICoachView()
             .tabItem {
                 Image(systemName: "sparkles")
-                Text("AI")
+                Text(languageManager.localized("AI"))
             }
             .tag(Tab.chat)
         
         let scoreTab = LongevityTrendView()
             .tabItem {
                 Image(systemName: "chart.bar.fill")
-                Text("Age")
+                Text(languageManager.localized("Age"))
             }
             .tag(Tab.score)
         
         let profileTab = ProfileView()
             .tabItem {
                 Image(systemName: "person.crop.circle")
-                Text("Profile")
+                Text(languageManager.localized("Profile"))
             }
             .tag(Tab.profile)
         
@@ -148,7 +149,7 @@ struct MainTabView: View {
     private func handleOnAppear(isOnboarding: Bool) {
         // Always start on AI tab (chat) when app opens
         // This ensures users see the AI screen first after login
-        appState.activeTab = .chat
+            appState.activeTab = .chat
         
         // Bootstrap app state
         Task {
@@ -201,6 +202,7 @@ struct MainTabView: View {
 struct AICoachView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: ChatViewModel
+    @StateObject private var languageManager = LanguageManager.shared
     @State private var chatMessage: String = ""
     
     init() {
@@ -275,7 +277,7 @@ struct AICoachView: View {
             OnboardingProgressBar(
                 progress: viewModel.onboardingProgress,
                 currentQuestionIndex: viewModel.currentOnboardingQuestionIndex,
-                totalQuestions: QuestionBanks.onboardingQuestions.count
+                totalQuestions: QuestionBanks.shared.onboardingQuestions.count
             )
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -287,7 +289,7 @@ struct AICoachView: View {
     private func buildDailyCheckInCard(isDailyMode: Bool, isOnboarding: Bool) -> some View {
         if isDailyMode && !isOnboarding {
             VStack(spacing: 8) {
-                DailyCheckInPinnedCard(viewModel: viewModel, appState: appState)
+            DailyCheckInPinnedCard(viewModel: viewModel, appState: appState)
                 
                 // Show reminder message if daily check-in is not completed
                 if !appState.isTodaySubmitted {
@@ -296,7 +298,7 @@ struct AICoachView: View {
                             .foregroundColor(.orange)
                             .font(.system(size: 14))
                         
-                        Text("Complete daily check-in to track your score")
+                        Text(languageManager.localized("Complete daily check-in to track your score"))
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.orange.opacity(0.9))
                     }
@@ -345,34 +347,34 @@ struct AICoachView: View {
     
     @ViewBuilder
     private var heroMessageView: some View {
-        // Hero message for daily mode
-        VStack {
-            Spacer()
-            VStack(spacing: 12) {
-                Text("The Longevity App is ready.")
-                    .font(.system(size: 20, weight: .medium))
-                Text("Let's optimize your healthspan.")
-                    .font(.system(size: 20, weight: .medium))
-            }
-            .foregroundColor(.white.opacity(0.9))
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 20)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Hero message for daily mode
+                VStack {
+                    Spacer()
+                    VStack(spacing: 12) {
+                Text(languageManager.localized("The Longevity App is ready."))
+                            .font(.system(size: 20, weight: .medium))
+                        Text(languageManager.localized("Let's optimize your healthspan."))
+                            .font(.system(size: 20, weight: .medium))
+                    }
+                    .foregroundColor(.white.opacity(0.9))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     @ViewBuilder
     private var scrollableMessagesView: some View {
-        // Scrollable messages (always visible, but disabled when check-in is active)
-        ScrollViewReader { proxy in
+                // Scrollable messages (always visible, but disabled when check-in is active)
+                ScrollViewReader { proxy in
             messagesScrollView(proxy: proxy)
         }
     }
     
     @ViewBuilder
     private func messagesScrollView(proxy: ScrollViewProxy) -> some View {
-        ScrollView {
+                    ScrollView {
             messagesContent
         }
         .disabled(viewModel.isChatDisabled && viewModel.mode != .onboarding)
@@ -395,9 +397,9 @@ struct AICoachView: View {
     
     @ViewBuilder
     private var messagesContent: some View {
-        VStack(spacing: 16) {
-            // Show all messages
-            ForEach(viewModel.messages) { message in
+                        VStack(spacing: 16) {
+                            // Show all messages
+                            ForEach(viewModel.messages) { message in
                 messageRow(message: message)
             }
             
@@ -415,21 +417,21 @@ struct AICoachView: View {
     
     @ViewBuilder
     private func messageRow(message: ChatMessage) -> some View {
-        VStack(spacing: 8) {
-            ChatBubbleView(message: message)
-                .opacity((viewModel.isChatDisabled && viewModel.mode != .onboarding) ? 0.4 : 1.0)
-            
+                                VStack(spacing: 8) {
+                                    ChatBubbleView(message: message)
+                                        .opacity((viewModel.isChatDisabled && viewModel.mode != .onboarding) ? 0.4 : 1.0)
+                                    
             // Loading indicator when waiting for AI response
             if viewModel.isWaitingForResponse && message.id == viewModel.messages.last?.id && message.isUser {
                 LongevityAILoadingView()
                     .padding(.top, 8)
             }
-            
-            // Retry button for failed submissions
-            if !message.isUser,
-               message.id == viewModel.messages.last?.id,
-               case .failed(let errorMsg) = viewModel.submitState,
-               message.text.contains(errorMsg) {
+                                    
+                                    // Retry button for failed submissions
+                                    if !message.isUser,
+                                       message.id == viewModel.messages.last?.id,
+                                       case .failed(let errorMsg) = viewModel.submitState,
+                                       message.text.contains(errorMsg) {
                 retryButtonRow
             }
         }
@@ -438,79 +440,79 @@ struct AICoachView: View {
     
     @ViewBuilder
     private var retryButtonRow: some View {
-        HStack(spacing: 12) {
-            Button(action: {
-                viewModel.retryLastSubmission()
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12))
-                    Text("Retry")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(
-                    Capsule()
+                                        HStack(spacing: 12) {
+                                            Button(action: {
+                                                viewModel.retryLastSubmission()
+                                            }) {
+                                                HStack(spacing: 6) {
+                                                    Image(systemName: "arrow.clockwise")
+                                                        .font(.system(size: 12))
+                                                    Text(languageManager.localized("Retry"))
+                                                        .font(.system(size: 14, weight: .semibold))
+                                                }
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 16)
+                                                .padding(.vertical, 10)
+                                                .background(
+                                                    Capsule()
                         .fill(Color.primaryGreen.opacity(0.2))
-                        .overlay(
-                            Capsule()
+                                                        .overlay(
+                                                            Capsule()
                                 .stroke(Color.primaryGreen.opacity(0.4), lineWidth: 1)
-                        )
-                )
-            }
-            
-            if viewModel.mode == .onboarding && viewModel.currentOnboardingQuestionIndex > 0 {
-                Button(action: {
-                    viewModel.goBackToLastQuestion()
-                }) {
-                    Text("Edit answers")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white.opacity(0.7))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                }
-            }
-        }
-        .padding(.top, 4)
-        .opacity(viewModel.isChatDisabled ? 0.4 : 1.0)
+                                                        )
+                                                )
+                                            }
+                                            
+                                            if viewModel.mode == .onboarding && viewModel.currentOnboardingQuestionIndex > 0 {
+                                                Button(action: {
+                                                    viewModel.goBackToLastQuestion()
+                                                }) {
+                                                    Text(languageManager.localized("Edit answers"))
+                                                        .font(.system(size: 14, weight: .medium))
+                                                        .foregroundColor(.white.opacity(0.7))
+                                                        .padding(.horizontal, 16)
+                                                        .padding(.vertical, 10)
+                                                }
+                                            }
+                                        }
+                                        .padding(.top, 4)
+                                        .opacity(viewModel.isChatDisabled ? 0.4 : 1.0)
     }
     
     @ViewBuilder
     private func onboardingOptionsView(question: OnboardingQuestion) -> some View {
-        VStack(spacing: 12) {
-            ForEach(question.options) { option in
-                OptionButton(
-                    title: option.title,
-                    isSelected: false,
-                    action: {
-                        print("[AICoachView] Option tapped: \(option.title)")
-                        viewModel.selectOnboardingOption(option)
-                    }
-                )
+                                VStack(spacing: 12) {
+                                    ForEach(question.options) { option in
+                                        OptionButton(
+                                            title: option.title,
+                                            isSelected: false,
+                                            action: {
+                                                print("[AICoachView] Option tapped: \(option.title)")
+                                                viewModel.selectOnboardingOption(option)
+                                            }
+                                        )
                 .buttonStyle(PlainButtonStyle())
-            }
-        }
+                                    }
+                                }
         .padding(.horizontal, 0)
-        .padding(.top, 8)
-        .id("onboarding-options")
+                                .padding(.top, 8)
+                                .id("onboarding-options")
         .allowsHitTesting(true)
     }
     
     private func handleScrollViewAppear(proxy: ScrollViewProxy) {
-        if !viewModel.messages.isEmpty {
-            if let last = viewModel.messages.last {
-                let delay = viewModel.mode == .onboarding ? 0.6 : 0.3
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    withAnimation {
-                        proxy.scrollTo(last.id, anchor: .bottom)
+                        if !viewModel.messages.isEmpty {
+                            if let last = viewModel.messages.last {
+                                let delay = viewModel.mode == .onboarding ? 0.6 : 0.3
+                                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                                    withAnimation {
+                                        proxy.scrollTo(last.id, anchor: .bottom)
+                                    }
+                                }
+                            }
+                        }
+                        updateDailyCheckInState()
                     }
-                }
-            }
-        }
-        updateDailyCheckInState()
-    }
     
     private func handleMessagesCountChange(proxy: ScrollViewProxy) {
         if viewModel.mode == .onboarding {
@@ -521,35 +523,35 @@ struct AICoachView: View {
             }
         } else if let last = viewModel.messages.last {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                withAnimation {
-                    proxy.scrollTo(last.id, anchor: .bottom)
-                }
-            }
-        }
-    }
+                                withAnimation {
+                                    proxy.scrollTo(last.id, anchor: .bottom)
+                                }
+                            }
+                        }
+                    }
     
     private func handleOnboardingQuestionIndexChange(proxy: ScrollViewProxy) {
-        if viewModel.mode == .onboarding {
+                        if viewModel.mode == .onboarding {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                withAnimation {
-                    proxy.scrollTo("onboarding-options", anchor: .bottom)
-                }
-            }
-        }
-    }
+                                withAnimation {
+                                    proxy.scrollTo("onboarding-options", anchor: .bottom)
+                                }
+                            }
+                        }
+                    }
     
     private func handleModeChange(proxy: ScrollViewProxy) {
-        if viewModel.mode == .onboarding && !viewModel.messages.isEmpty {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                if let last = viewModel.messages.last {
-                    withAnimation {
-                        proxy.scrollTo(last.id, anchor: .bottom)
+                        if viewModel.mode == .onboarding && !viewModel.messages.isEmpty {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                if let last = viewModel.messages.last {
+                                    withAnimation {
+                                        proxy.scrollTo(last.id, anchor: .bottom)
+                        }
                     }
                 }
             }
         }
     }
-}
 
 // ChatMessage is now defined in ChatViewModel.swift
 
@@ -625,10 +627,11 @@ struct ChatBubbleView: View {
 struct InputBarView: View {
     @Binding var chatMessage: String
     let onSend: () -> Void
+    @StateObject private var languageManager = LanguageManager.shared
     
     var body: some View {
         HStack(spacing: 12) {
-            TextField("Ask anything about your health, habits...", text: $chatMessage)
+            TextField(languageManager.localized("Ask anything about your health, habits..."), text: $chatMessage)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .foregroundColor(.white)
@@ -664,6 +667,7 @@ struct HeaderView: View {
     let checkInStep: CheckInStep?
     let messages: [ChatMessage]
     let onStartCheckIn: () -> Void
+    @StateObject private var languageManager = LanguageManager.shared
     
     var body: some View {
         if checkInStep == nil {
@@ -674,7 +678,7 @@ struct HeaderView: View {
                             .foregroundColor(.green)
                             .font(.system(size: 18))
                         
-                        Text("Start Daily Check-In")
+                        Text(languageManager.localized("Start Daily Check-In"))
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(.white)
                         
@@ -694,7 +698,7 @@ struct HeaderView: View {
                             )
                     )
                     
-                    Text("REQUIRED DAILY TO TRACK YOUR BIOLOGICAL AGE")
+                    Text(languageManager.localized("REQUIRED DAILY TO TRACK YOUR BIOLOGICAL AGE"))
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(.green.opacity(0.7))
                         .kerning(1)
@@ -774,6 +778,7 @@ struct StepControlView: View {
     let step: CheckInStep
     @Binding var metrics: DailyUpdateRequest.Metrics
     let onAnswer: (String) -> Void
+    @StateObject private var languageManager = LanguageManager.shared
     
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -822,20 +827,20 @@ struct StepControlView: View {
                         }
                     }
                 case .caffeine:
-                    CheckInButton(title: "No") {
+                    CheckInButton(title: languageManager.localized("No")) {
                         metrics.lateCaffeine = false
                         onAnswer("No caffeine")
                     }
-                    CheckInButton(title: "Yes") {
+                    CheckInButton(title: languageManager.localized("Yes")) {
                         metrics.lateCaffeine = true
                         onAnswer("Yes, had caffeine")
                     }
                 case .screen:
-                    CheckInButton(title: "No") {
+                    CheckInButton(title: languageManager.localized("No")) {
                         metrics.screenLate = false
                         onAnswer("No screens")
                     }
-                    CheckInButton(title: "Yes") {
+                    CheckInButton(title: languageManager.localized("Yes")) {
                         metrics.screenLate = true
                         onAnswer("Yes, used screens")
                     }
@@ -882,6 +887,7 @@ struct LongevityTrendView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) var dismiss
     @StateObject private var deltaViewModel = DeltaAnalyticsViewModel()
+    @StateObject private var languageManager = LanguageManager.shared
     @State private var selectedRange: TrendRange = .weekly
     
     // MARK: - Helper Functions
@@ -890,11 +896,11 @@ struct LongevityTrendView: View {
         let value = String(format: "%.2f", abs(delta))
         
         if delta < 0 {
-            return "Today's Δ: \(sign)\(value) years (you got younger today)"
+            return "\(languageManager.localized("Today's Δ:")) \(sign)\(value) \(languageManager.localized("years (you got younger today)"))"
         } else if delta > 0 {
-            return "Today's Δ: \(sign)\(value) years"
+            return "\(languageManager.localized("Today's Δ:")) \(sign)\(value) \(languageManager.localized("years"))"
         } else {
-            return "Today's Δ: 0.00 years"
+            return languageManager.localized("Today's Δ: minimal change")
         }
     }
     
@@ -912,20 +918,20 @@ struct LongevityTrendView: View {
                 range: selectedRange.rawValue
             )
             .frame(minHeight: 240)
-            .padding(.horizontal, screenPadding)
+                .padding(.horizontal, screenPadding)
             
             // Check-in metadata (immediately under graph, small gray meta)
             if let summary = deltaViewModel.dailySummary ?? deltaViewModel.yearlySummary {
                 HStack {
-                    Text("\(summary.checkIns) check-ins this period")
+                    Text("\(summary.checkIns) \(languageManager.localized("check-ins this period"))")
                         .font(.system(size: 10, weight: .regular))
                         .foregroundColor(.white.opacity(0.35))
                     
                     Spacer()
                 }
-                .padding(.horizontal, screenPadding)
+            .padding(.horizontal, screenPadding)
                 .padding(.top, 12)
-                .padding(.bottom, sectionSpacing)
+            .padding(.bottom, sectionSpacing)
             } else {
                 Spacer()
                     .frame(height: sectionSpacing)
@@ -955,14 +961,14 @@ struct LongevityTrendView: View {
         
         HStack(spacing: 24) {
             MetricCard(
-                title: "AGING DEBT",
+                title: languageManager.localized("AGING DEBT"),
                 value: String(format: "%.2fy", abs(scoreViewModel.agingDebtYears)),
                 colorState: agingDebtColorState,
                 tooltipText: "The difference between your biological age and chronological age. Positive values indicate your body is aging faster than your calendar age."
             )
             
             MetricCard(
-                title: "DAILY Δ",
+                title: languageManager.localized("DAILY Δ"),
                 value: {
                     let sign = todayDelta < 0 ? "−" : (todayDelta > 0 ? "+" : "")
                     return "\(sign)\(String(format: "%.2f", abs(todayDelta)))y"
@@ -983,7 +989,7 @@ struct LongevityTrendView: View {
             HStack(spacing: 8) {
             Text("🔥")
                     .font(.system(size: 16))
-            Text("\(scoreViewModel.rejuvenationStreakDays) DAY STREAK")
+            Text("\(scoreViewModel.rejuvenationStreakDays) \(languageManager.localized("DAY STREAK"))")
                     .font(.system(size: 12, weight: .bold))
                     .kerning(0.5)
         }
@@ -1006,7 +1012,7 @@ struct LongevityTrendView: View {
     @ViewBuilder
     private func shareRow() -> some View {
         HStack(spacing: 20) {
-            Text("SHARE INSIGHTS")
+            Text(languageManager.localized("SHARE INSIGHTS"))
                 .font(.system(size: 9, weight: .bold))
                 .foregroundColor(.white.opacity(0.3))
                 .kerning(1)
@@ -1026,7 +1032,7 @@ struct LongevityTrendView: View {
         HStack {
             Spacer()
             
-            Text("LONGEVITY AGE")
+            Text(languageManager.localized("LONGEVITY AGE"))
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.white.opacity(0.6))
                 .kerning(1.5)
@@ -1044,7 +1050,7 @@ struct LongevityTrendView: View {
     private func statusChip(diff: Double, isGood: Bool) -> some View {
         // Use diff to determine status
         let trendValue: Double = diff
-        let trendLabel: String = isGood ? "Rejuvenation" : "Acceleration"
+        let trendLabel: String = isGood ? languageManager.localized("Rejuvenation") : languageManager.localized("Acceleration")
         
         let chipColor: Color = {
             if trendValue < 0 {
@@ -1069,7 +1075,7 @@ struct LongevityTrendView: View {
         HStack(spacing: 6) {
             Text(chipIcon)
             Text(String(format: "%@: %.2fy", trendLabel, abs(trendValue)))
-                    .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 11, weight: .bold))
         }
         .foregroundColor(chipColor)
         .padding(.horizontal, 14)
@@ -1200,7 +1206,7 @@ struct LongevityTrendView: View {
                     .font(.system(size: 72, weight: .semibold, design: .rounded))
                     .foregroundColor(colorState.color)
                 
-                Text("BIOLOGICAL")
+                Text(languageManager.localized("BIOLOGICAL"))
                     .font(.system(size: 9, weight: .medium))
                     .foregroundColor(colorState.color.opacity(0.65))
                     .kerning(1.2)
@@ -1213,7 +1219,7 @@ struct LongevityTrendView: View {
                         .font(.system(size: 12))
                         .opacity(0.7)
                         .baselineOffset(-1)
-                    Text("Your biological age is currently \(String(format: "%.2f", trendValue)) years below your chronological age")
+                    Text("\(languageManager.localized("Your biological age is currently")) \(String(format: "%.2f", trendValue)) \(languageManager.localized("years below your chronological age"))")
                         .font(.system(size: 13, weight: .regular))
                         .foregroundColor(.white.opacity(0.6))
                 }
@@ -1225,7 +1231,7 @@ struct LongevityTrendView: View {
                         .font(.system(size: 12))
                         .opacity(0.7)
                         .baselineOffset(-1)
-                    Text("Your biological age is currently \(String(format: "%.2f", trendValue)) years above your chronological age — and this can improve with consistency.")
+                    Text("\(languageManager.localized("Your biological age is currently")) \(String(format: "%.2f", trendValue)) \(languageManager.localized("years above your chronological age — and this can improve with consistency."))")
                         .font(.system(size: 13, weight: .regular))
                         .foregroundColor(.white.opacity(0.5))
                 }
@@ -1237,7 +1243,7 @@ struct LongevityTrendView: View {
                         .font(.system(size: 12))
                         .opacity(0.7)
                         .baselineOffset(-1)
-                    Text("Aligned with your chronological age")
+                    Text(languageManager.localized("Aligned with your chronological age"))
                         .font(.system(size: 13, weight: .regular))
                         .foregroundColor(.white.opacity(0.5))
                 }
@@ -1251,7 +1257,7 @@ struct LongevityTrendView: View {
                     .font(.system(size: 24, weight: .regular, design: .rounded))
                     .foregroundColor(.white.opacity(0.25))
                 
-                Text("Chronological")
+                Text(languageManager.localized("Chronological"))
                     .font(.system(size: 8, weight: .medium))
                     .foregroundColor(.white.opacity(0.25))
                     .kerning(0.5)
@@ -1272,7 +1278,7 @@ struct LongevityTrendView: View {
                     Text("🔥")
                         .font(.system(size: 13))
                         .opacity(0.7)
-                    Text("\(scoreViewModel.rejuvenationStreakDays) day consistency streak")
+                    Text("\(scoreViewModel.rejuvenationStreakDays) \(languageManager.localized("day consistency streak"))")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundColor(.white.opacity(0.5))
                 }
@@ -1305,7 +1311,7 @@ struct LongevityTrendView: View {
     // MARK: - Microcopy Section
     @ViewBuilder
     private var microcopySection: some View {
-        Text("How your lifestyle affects your biological age over time")
+        Text(languageManager.localized("How your lifestyle affects your biological age over time"))
             .font(.system(size: 11, weight: .regular))
             .foregroundColor(.white.opacity(0.35))
             .multilineTextAlignment(.center)
@@ -1322,7 +1328,7 @@ struct LongevityTrendView: View {
                     // Update delta analytics when range changes
                     deltaViewModel.loadData(range: range.rawValue)
                 }) {
-                    Text(range.rawValue.uppercased())
+                    Text(languageManager.localized(range.rawValue.uppercased()))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(selectedRange == range ? .black : .white.opacity(0.5))
                         .frame(maxWidth: .infinity)
@@ -1426,10 +1432,10 @@ struct MetricCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
-                Text(title)
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.white.opacity(0.3))
-                    .kerning(1)
+            Text(title)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(.white.opacity(0.3))
+                .kerning(1)
                 
                 if let tooltip = tooltipText {
                     Button(action: {
@@ -1809,12 +1815,10 @@ struct ProfileView: View {
     @StateObject private var languageManager = LanguageManager.shared
     @State private var showTerms: Bool = false
     @State private var showPrivacy: Bool = false
-    @State private var showNotifications: Bool = false
     @State private var showMembershipDetail: Bool = false
     @State private var contentOffset: CGFloat = 0
     @State private var isDeletePressed: Bool = false
     @State private var isEmailVerificationBannerDismissed: Bool = false
-    @StateObject private var notificationManager = NotificationManager.shared
     
     private let availableLanguages = ["English", "Türkçe", "Español", "Français", "Deutsch"]
     private let cardSpacing: CGFloat = 24
@@ -1840,15 +1844,15 @@ struct ProfileView: View {
                 VStack(spacing: 0) {
                     // Page Header (Score screen style)
                     VStack(spacing: 12) {
-                        HStack {
-                            Spacer()
-                            
-                            Text("PROFILE")
+                    HStack {
+                        Spacer()
+                        
+                            Text(languageManager.localized("PROFILE"))
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.6))
-                                .kerning(1.5)
-                            
-                            Spacer()
+                            .foregroundColor(.white.opacity(0.6))
+                            .kerning(1.5)
+                        
+                        Spacer()
                         }
                         
                         // User name
@@ -1884,12 +1888,6 @@ struct ProfileView: View {
                         Divider()
                             .background(Color.white.opacity(0.1))
                         
-                        // Notifications
-                        notificationsSection
-                        
-                        Divider()
-                            .background(Color.white.opacity(0.1))
-                        
                         // Legal Section
                         legalSection
                     }
@@ -1905,35 +1903,35 @@ struct ProfileView: View {
                 .offset(y: contentOffset > 0 ? 0 : 20)
             }
         }
-        .alert("Logout", isPresented: $showLogoutAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Logout", role: .destructive) {
+        .alert(languageManager.localized("Logout"), isPresented: $showLogoutAlert) {
+            Button(languageManager.localized("Cancel"), role: .cancel) { }
+            Button(languageManager.localized("Logout"), role: .destructive) {
                 Task {
                     await handleLogout()
                 }
             }
         } message: {
-            Text("You will need to sign in again to access your account.")
+            Text(languageManager.localized("You will need to sign in again to access your account."))
         }
-        .alert("Delete account?", isPresented: $showDeleteAccountAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
+        .alert(languageManager.localized("Delete account?"), isPresented: $showDeleteAccountAlert) {
+            Button(languageManager.localized("Cancel"), role: .cancel) { }
+            Button(languageManager.localized("Delete"), role: .destructive) {
                 Task {
                     await handleDeleteAccount()
                 }
             }
         } message: {
-            Text("This will permanently delete your data and cannot be undone.")
+            Text(languageManager.localized("This will permanently delete your data and cannot be undone."))
         }
-        .alert("Email Verification Required", isPresented: $showEmailVerificationRequiredAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Bypass Verify (Test)", role: .none) {
+        .alert(languageManager.localized("Email Verification Required"), isPresented: $showEmailVerificationRequiredAlert) {
+            Button(languageManager.localized("Cancel"), role: .cancel) { }
+            Button(languageManager.localized("Bypass Verify (Test)"), role: .none) {
                 Task {
                     await handleBypassVerify()
                 }
             }
         } message: {
-            Text("Email verification is required to delete your account. Please verify your email first, or use the bypass button for testing.")
+            Text(languageManager.localized("Email verification is required to delete your account. Please verify your email first, or use the bypass button for testing."))
         }
         .onAppear {
             // Reload user to refresh email verification status
@@ -1946,8 +1944,6 @@ struct ProfileView: View {
                 // Load subscription status
                 await subscriptionManager.loadSubscriptionStatus()
             }
-            // Check notification authorization status
-            notificationManager.checkAuthorizationStatus()
             // Sync selected language with language manager
             selectedLanguage = languageManager.currentLanguage
             withAnimation(.easeOut(duration: 0.6)) {
@@ -1959,9 +1955,6 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showPrivacy) {
             PrivacyPolicyView()
-        }
-        .sheet(isPresented: $showNotifications) {
-            NotificationSettingsView()
         }
         .sheet(isPresented: $showMembershipDetail) {
             MembershipView()
@@ -1985,22 +1978,22 @@ struct ProfileView: View {
             Button(action: {
                 showMembershipDetail = true
             }) {
-                HStack(spacing: 12) {
+                        HStack(spacing: 12) {
                     Image(systemName: "star.fill")
                         .font(.system(size: 14, weight: .regular))
                         .foregroundColor(.white.opacity(0.4))
                         .frame(width: 16)
                     
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Membership")
+                        Text(languageManager.localized("Membership"))
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
                         
-                        Text("Longevity Premium")
+                        Text(languageManager.localized("Longevity Premium"))
                             .font(.system(size: 14, weight: .regular))
                             .foregroundColor(.white.opacity(0.5))
                         
-                        Text("Active · Managed by Apple")
+                        Text(languageManager.localized("Active · Managed by Apple"))
                             .font(.system(size: 12, weight: .regular))
                             .foregroundColor(.white.opacity(0.4))
                     }
@@ -2010,14 +2003,28 @@ struct ProfileView: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.3))
-                }
-                .padding(20)
+                    }
+                    .padding(20)
             }
+        }
+        .onAppear {
+            // Initialize selectedLanguage from LanguageManager or AppState
+            if let preferredLanguageCode = appState.userPreferredLanguage {
+                let languageName = languageManager.getLanguageName(for: preferredLanguageCode)
+                selectedLanguage = languageName
+                languageManager.setLanguage(languageName)
+            } else {
+                selectedLanguage = languageManager.currentLanguage
+            }
+        }
+        .onChange(of: languageManager.currentLanguage) { _, newLanguage in
+            // Update selectedLanguage when LanguageManager changes
+            selectedLanguage = newLanguage
         }
     }
     
     private func featureRow(icon: String, text: String) -> some View {
-        HStack(spacing: 8) {
+                        HStack(spacing: 8) {
             Image(systemName: icon)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(Color.primaryGreen)
@@ -2036,6 +2043,27 @@ struct ProfileView: View {
                     Button(action: {
                     selectedLanguage = language
                     languageManager.setLanguage(language)
+                    
+                    // Update backend with new language preference
+                    let languageCode = languageManager.getLanguageCode(for: language)
+                    Task {
+                        do {
+                            _ = try await APIClient.shared.patchProfile(preferredLanguage: languageCode)
+                            await MainActor.run {
+                                appState.updateUserProfile(
+                                    firstName: appState.userFirstName,
+                                    lastName: appState.userLastName,
+                                    chronologicalAge: appState.userChronologicalAge,
+                                    timezone: appState.userTimezone,
+                                    preferredLanguage: languageCode
+                                )
+                            }
+                            print("[ProfileView] Language preference updated to: \(languageCode)")
+                        } catch {
+                            print("[ProfileView] Failed to update language preference: \(error)")
+                            // Language is still updated locally, backend sync can happen later
+                        }
+                    }
                 }) {
                     HStack {
                         Text(language)
@@ -2054,40 +2082,13 @@ struct ProfileView: View {
                         .frame(width: 16)
                     
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Language")
+                        Text(languageManager.localized("Language"))
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
                         
                         Text(selectedLanguage)
                             .font(.system(size: 14, weight: .regular))
                             .foregroundColor(.white.opacity(0.5))
-                    }
-                    
-                    Spacer()
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.3))
-                }
-                .padding(20)
-            }
-        }
-    }
-    
-    // MARK: - Notifications Section
-    private var notificationsSection: some View {
-        MinimalCard {
-            Button(action: { showNotifications = true }) {
-                HStack(spacing: 12) {
-                    Image(systemName: "bell")
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundColor(.white.opacity(0.4))
-                        .frame(width: 16)
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Notifications")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
                     }
                     
                     Spacer()
@@ -2112,7 +2113,7 @@ struct ProfileView: View {
                             .foregroundColor(.white.opacity(0.4))
                             .frame(width: 16)
                         
-                        Text("Terms of Service")
+                        Text(languageManager.localized("Terms of Service"))
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
                         
@@ -2131,14 +2132,14 @@ struct ProfileView: View {
             
             MinimalCard {
                 Button(action: { showPrivacy = true }) {
-                    HStack(spacing: 12) {
+                        HStack(spacing: 12) {
                         Image(systemName: "lock.shield")
                             .font(.system(size: 14, weight: .regular))
                             .foregroundColor(.white.opacity(0.4))
                             .frame(width: 16)
                         
-                        Text("Privacy Policy")
-                            .font(.system(size: 16, weight: .semibold))
+                        Text(languageManager.localized("Privacy Policy"))
+                                .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
                         
                         Spacer()
@@ -2162,11 +2163,11 @@ struct ProfileView: View {
                 .frame(width: 20)
             
             VStack(alignment: .leading, spacing: 4) {
-                Text("Verify your email")
+                Text(languageManager.localized("Verify your email"))
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
+                        .foregroundColor(.white)
                 
-                Text("Secure your account and data")
+                Text(languageManager.localized("Secure your account and data"))
                     .font(.system(size: 13, weight: .regular))
                     .foregroundColor(.white.opacity(0.6))
             }
@@ -2182,7 +2183,7 @@ struct ProfileView: View {
             }
         }
         .padding(16)
-        .background(
+                        .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color.white.opacity(0.08))
                 .overlay(
@@ -2223,10 +2224,10 @@ struct ProfileView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .background(
+                        .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color.white.opacity(0.04))
-                .overlay(
+                                .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
@@ -2242,7 +2243,7 @@ struct ProfileView: View {
                 impact.impactOccurred()
                 showLogoutAlert = true
             }) {
-                Text("Log out")
+                Text(languageManager.localized("Log out"))
                     .font(.system(size: 15, weight: .regular))
                     .foregroundColor(.white.opacity(0.6))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -2253,7 +2254,7 @@ struct ProfileView: View {
                 Button(action: {
                     showDeleteAccountAlert = true
                 }) {
-                    Text("Delete account")
+                    Text(languageManager.localized("Delete account"))
                         .font(.system(size: 13, weight: .regular))
                         .foregroundColor(isDeletePressed ? .red.opacity(0.8) : .white.opacity(0.35))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2266,7 +2267,7 @@ struct ProfileView: View {
                     }
                 } perform: {}
                 
-                Text("This action is permanent")
+                Text(languageManager.localized("This action is permanent"))
                     .font(.system(size: 11, weight: .regular))
                     .foregroundColor(.white.opacity(0.3))
                     .padding(.leading, 0)
@@ -2391,7 +2392,7 @@ struct ProfileView: View {
                            lowercased.contains("email verification") {
                             // Email verification required - alert already shown in alert message
                             showDeleteAccountAlert = false
-                        } else {
+        } else {
                             // Other 403 error
                             showDeleteAccountAlert = false
                         }
@@ -3087,7 +3088,8 @@ struct OnboardingProgressBar: View {
             
             // Progress text
             HStack {
-                Text("Question \(currentQuestionIndex) of \(totalQuestions)")
+                let languageManager = LanguageManager.shared
+                Text("\(languageManager.localized("Question")) \(currentQuestionIndex) of \(totalQuestions)")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.white.opacity(0.6))
                 Spacer()
@@ -3102,6 +3104,7 @@ struct OnboardingProgressBar: View {
 struct DailyCheckInPinnedCard: View {
     @ObservedObject var viewModel: ChatViewModel
     @ObservedObject var appState: AppState
+    @StateObject private var languageManager = LanguageManager.shared
     
     var body: some View {
         let state = viewModel.dailyCheckInState
@@ -3120,21 +3123,11 @@ struct DailyCheckInPinnedCard: View {
                         .foregroundColor(.green)
                         .font(.system(size: 18))
                     
-                    Text("Daily Check-in Complete")
+                    Text(languageManager.localized("Daily Check-in Complete"))
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
 
-                Spacer()
-                    
-                    Button(action: {
-                        withAnimation {
-                            viewModel.toggleDailyCheckIn()
-                        }
-                    }) {
-                        Image(systemName: "chevron.down")
-                            .foregroundColor(.white.opacity(0.7))
-                            .font(.system(size: 14))
-                    }
+                    Spacer()
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 14)
@@ -3154,11 +3147,11 @@ struct DailyCheckInPinnedCard: View {
                 VStack(spacing: 12) {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Daily Check-in")
+                            Text(languageManager.localized("Daily Check-in"))
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(.white)
                             
-                            Text("Takes ~30 seconds")
+                            Text(languageManager.localized("Takes ~30 seconds"))
                                 .font(.system(size: 12))
                                 .foregroundColor(.white.opacity(0.6))
                         }
@@ -3201,7 +3194,7 @@ struct DailyCheckInPinnedCard: View {
                         if let question = viewModel.currentDailyQuestion {
                             VStack(alignment: .leading, spacing: 12) {
                                 if viewModel.currentDailyQuestionIndex == 0 {
-                                    Text("Let's do your daily check-in. How was your sleep last night?")
+                                    Text(languageManager.localized("How was your sleep last night?"))
                                         .font(.system(size: 14))
                                         .foregroundColor(.white.opacity(0.9))
                                 } else {

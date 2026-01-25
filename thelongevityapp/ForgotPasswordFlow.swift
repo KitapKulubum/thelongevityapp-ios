@@ -130,6 +130,7 @@ struct ForgotPasswordFlowView: View {
 // MARK: - A) ResetPasswordEmailView
 struct ResetPasswordEmailView: View {
     @Binding var email: String
+    @StateObject private var languageManager = LanguageManager.shared
     @State private var isLoading: Bool = false
     @State private var showConfirmation: Bool = false
     @State private var errorMessage: String?
@@ -148,12 +149,12 @@ struct ResetPasswordEmailView: View {
                 
                 // Title & Subtitle
                 VStack(spacing: 12) {
-                    Text("Reset password")
+                    Text(languageManager.localized("Reset password"))
                         .font(.system(size: 28, weight: .semibold))
                         .kerning(1.2)
                         .foregroundColor(.white)
                     
-                    Text("We'll send a verification code to your email.")
+                    Text(languageManager.localized("We'll send a verification code to your email."))
                         .font(.system(size: 15, weight: .regular))
                         .foregroundColor(.white.opacity(0.6))
                         .multilineTextAlignment(.center)
@@ -163,7 +164,7 @@ struct ResetPasswordEmailView: View {
                 // Email Input
                 VStack(spacing: 16) {
                     GlassTextField(
-                        title: "Email address",
+                        title: languageManager.localized("Email address"),
                         placeholder: "user@example.com",
                         text: $email,
                         icon: "envelope"
@@ -187,7 +188,7 @@ struct ResetPasswordEmailView: View {
                     }
                 } label: {
                     HStack {
-                        Text("Send code")
+                        Text(languageManager.localized("Send code"))
                             .font(.system(size: 16, weight: .semibold))
                         if isLoading {
                             ProgressView()
@@ -228,7 +229,7 @@ struct ResetPasswordEmailView: View {
                     VStack {
                         Spacer()
                         HStack {
-                            Text("If an account exists for this email, we've sent a code.")
+                            Text(languageManager.localized("If an account exists for this email, we've sent a code."))
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 20)
@@ -313,6 +314,7 @@ struct ResetPasswordEmailView: View {
 // MARK: - B) VerifyCodeView
 struct VerifyCodeView: View {
     let email: String
+    @StateObject private var languageManager = LanguageManager.shared
     @State private var code: String = ""
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
@@ -336,12 +338,12 @@ struct VerifyCodeView: View {
                 
                 // Title & Subtitle
                 VStack(spacing: 12) {
-                    Text("Enter verification code")
+                    Text(languageManager.localized("Enter verification code"))
                         .font(.system(size: 28, weight: .semibold))
                         .kerning(1.2)
                         .foregroundColor(.white)
                     
-                    Text("We sent a 6-digit code to \(email)")
+                    Text("\(languageManager.localized("We sent a 6-digit code to")) \(email)")
                         .font(.system(size: 15, weight: .regular))
                         .foregroundColor(.white.opacity(0.6))
                         .multilineTextAlignment(.center)
@@ -364,7 +366,7 @@ struct VerifyCodeView: View {
                     // Resend Code
                     HStack(spacing: 8) {
                         if !canResend {
-                            Text("Resend code in \(resendCountdown)s")
+                            Text("\(languageManager.localized("Resend code in")) \(resendCountdown)s")
                                 .font(.system(size: 13, weight: .regular))
                                 .foregroundColor(.white.opacity(0.5))
                         } else {
@@ -373,7 +375,7 @@ struct VerifyCodeView: View {
                                     await resendCode()
                                 }
                             } label: {
-                                Text("Resend code")
+                                Text(languageManager.localized("Resend code"))
                                     .font(.system(size: 13, weight: .medium))
                                     .foregroundColor(accent)
                             }
@@ -391,7 +393,7 @@ struct VerifyCodeView: View {
                     }
                 } label: {
                     HStack {
-                        Text("Verify")
+                        Text(languageManager.localized("Verify"))
                             .font(.system(size: 16, weight: .semibold))
                         if isLoading {
                             ProgressView()
@@ -534,12 +536,13 @@ struct VerifyCodeView: View {
 struct CodeInputView: View {
     @Binding var code: String
     @FocusState.Binding var isFocused: Bool
+    @StateObject private var languageManager = LanguageManager.shared
     
     private let accent = Color.primaryGreen
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Verification code")
+            Text(languageManager.localized("Verification code"))
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(.white.opacity(0.7))
             
@@ -607,6 +610,7 @@ struct CodeDigitBox: View {
 struct NewPasswordView: View {
     let email: String
     let resetToken: String
+    @StateObject private var languageManager = LanguageManager.shared
     @State private var newPassword: String = ""
     @State private var confirmPassword: String = ""
     @State private var isLoading: Bool = false
@@ -631,7 +635,7 @@ struct NewPasswordView: View {
                 
                 // Title
                 VStack(spacing: 12) {
-                    Text("Create a new password")
+                    Text(languageManager.localized("Create a new password"))
                         .font(.system(size: 28, weight: .semibold))
                         .kerning(1.2)
                         .foregroundColor(.white)
@@ -666,13 +670,13 @@ struct NewPasswordView: View {
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(Color(red: 1.0, green: 0.76, blue: 0.03).opacity(0.9))
                             
-                            Text("Passwords don't match yet.")
+                            Text(languageManager.localized("Passwords don't match yet."))
                                 .font(.system(size: 12, weight: .regular))
                                 .foregroundColor(Color(red: 1.0, green: 0.76, blue: 0.03).opacity(0.9))
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.leading, 4)
-                        .accessibilityLabel("Password validation: Passwords don't match yet.")
+                        .accessibilityLabel("Password validation: \(languageManager.localized("Passwords don't match yet."))")
                     }
                 }
                 .padding(.horizontal, 24)
@@ -684,7 +688,7 @@ struct NewPasswordView: View {
                     }
                 } label: {
                     HStack {
-                        Text("Update password")
+                        Text(languageManager.localized("Update password"))
                             .font(.system(size: 16, weight: .semibold))
                         if isLoading {
                             ProgressView()
@@ -800,6 +804,7 @@ struct NewPasswordView: View {
 // MARK: - D) SuccessView
 struct SuccessView: View {
     let email: String
+    @StateObject private var languageManager = LanguageManager.shared
     var onBackToSignIn: () -> Void
     
     private let accent = Color.primaryGreen
@@ -821,7 +826,7 @@ struct SuccessView: View {
             
             // Message
             VStack(spacing: 12) {
-                Text("Your password has been updated.")
+                Text(languageManager.localized("Your password has been updated."))
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
@@ -833,7 +838,7 @@ struct SuccessView: View {
                 onBackToSignIn()
             } label: {
                 HStack {
-                    Text("Back to sign in")
+                    Text(languageManager.localized("Back to sign in"))
                         .font(.system(size: 16, weight: .semibold))
                     Image(systemName: "arrow.right")
                         .font(.system(size: 14, weight: .medium))

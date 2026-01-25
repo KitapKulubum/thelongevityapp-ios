@@ -10,6 +10,7 @@ import SwiftUI
 struct NotificationSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var notificationManager = NotificationManager.shared
+    @StateObject private var languageManager = LanguageManager.shared
     
     @State private var showPermissionExplainer: Bool = false
     @State private var showPermissionDeniedAlert: Bool = false
@@ -122,12 +123,12 @@ struct NotificationSettingsView: View {
                 )
             }
             .alert("Notifications Disabled", isPresented: $showPermissionDeniedAlert) {
-                Button("Open Settings") {
+                Button(languageManager.localized("Open Settings")) {
                     notificationManager.openSettings()
                 }
                 Button("Cancel", role: .cancel) { }
             } message: {
-                Text("Notifications are off for The Longevity App. You can enable them in Settings.")
+                Text(languageManager.localized("Notifications are off for The Longevity App. You can enable them in Settings."))
             }
         }
     }
@@ -216,11 +217,11 @@ struct NotificationSettingsView: View {
                         .foregroundColor(.white.opacity(0.6))
                     
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Notifications are off")
+                        Text(languageManager.localized("Notifications are off"))
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(.white)
                         
-                        Text("Enable notifications in Settings to receive reminders.")
+                        Text(languageManager.localized("Enable notifications in Settings to receive reminders."))
                             .font(.system(size: 13, weight: .regular))
                             .foregroundColor(.white.opacity(0.6))
                     }
@@ -231,7 +232,7 @@ struct NotificationSettingsView: View {
                 Button {
                     notificationManager.openSettings()
                 } label: {
-                    Text("Open Settings")
+                    Text(languageManager.localized("Open Settings"))
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
@@ -319,6 +320,7 @@ struct NotificationSettingsView: View {
 struct PermissionExplainerView: View {
     let onAllow: () -> Void
     let onNotNow: () -> Void
+    @StateObject private var languageManager = LanguageManager.shared
     
     var body: some View {
         ZStack {
@@ -330,11 +332,11 @@ struct PermissionExplainerView: View {
                     .foregroundColor(Color.primaryGreen)
                 
                 VStack(spacing: 12) {
-                    Text("Turn on reminders?")
+                    Text(languageManager.localized("Turn on reminders?"))
                         .font(.system(size: 22, weight: .semibold))
                         .foregroundColor(.white)
                     
-                    Text("We'll send gentle reminders to help you keep your rhythm.")
+                    Text(languageManager.localized("We'll send gentle reminders to help you keep your rhythm."))
                         .font(.system(size: 16, weight: .regular))
                         .foregroundColor(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
@@ -345,7 +347,7 @@ struct PermissionExplainerView: View {
                     Button {
                         onAllow()
                     } label: {
-                        Text("Allow reminders")
+                        Text(languageManager.localized("Allow reminders"))
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(.black)
                             .frame(maxWidth: .infinity)
@@ -359,7 +361,7 @@ struct PermissionExplainerView: View {
                     Button {
                         onNotNow()
                     } label: {
-                        Text("Not now")
+                        Text(languageManager.localized("Not now"))
                             .font(.system(size: 17, weight: .regular))
                             .foregroundColor(.white.opacity(0.7))
                             .frame(maxWidth: .infinity)

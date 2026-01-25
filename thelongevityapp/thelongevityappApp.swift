@@ -233,8 +233,15 @@ struct RootView: View {
                 )
                 backendUserId = profile.uid
                 userProfile = profile.profile
-                hasCompletedOnboarding = profile.hasCompletedOnboarding
-                print("[RootView] postAuthMe success - hasCompletedOnboarding: \(profile.hasCompletedOnboarding)")
+                hasCompletedOnboarding = profile.hasCompletedOnboarding ?? false
+                
+                // Handle language preference from backend
+                let languageCode = profile.locale ?? profile.profile?.preferredLanguage ?? LanguageManager.shared.getDeviceLanguageCode()
+                await MainActor.run {
+                    LanguageManager.shared.setLanguageCode(languageCode)
+                }
+                
+                print("[RootView] postAuthMe success - hasCompletedOnboarding: \(profile.hasCompletedOnboarding ?? false), locale: \(profile.locale ?? "nil"), preferredLanguage: \(profile.profile?.preferredLanguage ?? "nil")")
             } catch {
                 // If postAuthMe fails (decoding error, etc.), use Firebase uid instead
                 print("[RootView] postAuthMe failed, using Firebase uid: \(error)")
@@ -256,7 +263,8 @@ struct RootView: View {
                         firstName: profile.firstName,
                         lastName: profile.lastName,
                         chronologicalAge: profile.chronologicalAgeYears,
-                        timezone: profile.timezone
+                        timezone: profile.timezone,
+                        preferredLanguage: profile.preferredLanguage
                     )
                 }
                 
@@ -686,53 +694,25 @@ struct RootView: View {
             isCheckingSubscription = true
         }
         
-        do {
-            // Load subscription status from backend
-            await subscriptionManager.loadSubscriptionStatus()
-            
-            // Check if subscription is active
-            let hasActiveSubscription = subscriptionManager.subscriptionStatus == .active || subscriptionManager.subscriptionStatus == .trial
-            
-            await MainActor.run {
-                if hasActiveSubscription {
-                    // Subscription is active, update AppState and proceed
-                    appState.subscriptionStatus = .active
-                    showPaywall = false
-                    print("[RootView] Subscription is active, proceeding to app")
-                } else {
-                    // No active subscription, show paywall
-                    appState.subscriptionStatus = .inactive
-                    showPaywall = true
-                    print("[RootView] No active subscription, showing paywall")
-                }
-                isCheckingSubscription = false
-            }
-        } catch {
-            print("[RootView] Failed to check subscription status: \(error)")
-            // On error, check if it's a subscription required error
-            if let apiError = error as? APIError,
-               case .httpError(_, let statusCode, let responseBody) = apiError,
-               statusCode == 403 {
-                let lowercased = responseBody.lowercased()
-                if lowercased.contains("subscription_required") || 
-                   lowercased.contains("subscription required") ||
-                   lowercased.contains("\"code\":\"subscription_required\"") {
-                    await MainActor.run {
-                        appState.subscriptionStatus = .inactive
-                        showPaywall = true
-                        isCheckingSubscription = false
-                        print("[RootView] Subscription required error, showing paywall")
-                    }
-                    return
-                }
-            }
-            // On other errors, allow access (graceful degradation)
-            await MainActor.run {
-                appState.subscriptionStatus = .unknown
+        // Load subscription status from backend
+        await subscriptionManager.loadSubscriptionStatus()
+        
+        // Check if subscription is active
+        let hasActiveSubscription = subscriptionManager.subscriptionStatus == .active || subscriptionManager.subscriptionStatus == .trial
+        
+        await MainActor.run {
+            if hasActiveSubscription {
+                // Subscription is active, update AppState and proceed
+                appState.subscriptionStatus = .active
                 showPaywall = false
-                isCheckingSubscription = false
-                print("[RootView] Subscription check failed, allowing access")
+                print("[RootView] Subscription is active, proceeding to app")
+            } else {
+                // No active subscription, show paywall
+                appState.subscriptionStatus = .inactive
+                showPaywall = true
+                print("[RootView] No active subscription, showing paywall")
             }
+            isCheckingSubscription = false
         }
     }
 }

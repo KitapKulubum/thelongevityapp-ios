@@ -67,19 +67,19 @@ class ChatViewModel: ObservableObject {
     
     var currentOnboardingQuestion: OnboardingQuestion? {
         guard mode == .onboarding,
-              currentOnboardingQuestionIndex < QuestionBanks.onboardingQuestions.count else {
+              currentOnboardingQuestionIndex < QuestionBanks.shared.onboardingQuestions.count else {
             return nil
         }
-        return QuestionBanks.onboardingQuestions[currentOnboardingQuestionIndex]
+        return QuestionBanks.shared.onboardingQuestions[currentOnboardingQuestionIndex]
     }
     
     var currentDailyQuestion: DailyQuestion? {
         guard case .active(let expanded) = dailyCheckInState,
               expanded,
-              currentDailyQuestionIndex < QuestionBanks.dailyQuestions.count else {
+              currentDailyQuestionIndex < QuestionBanks.shared.dailyQuestions.count else {
             return nil
         }
-        return QuestionBanks.dailyQuestions[currentDailyQuestionIndex]
+        return QuestionBanks.shared.dailyQuestions[currentDailyQuestionIndex]
     }
     
     var chatInputEnabled: Bool {
@@ -108,13 +108,13 @@ class ChatViewModel: ObservableObject {
     }
     
     var onboardingProgress: Double {
-        guard !QuestionBanks.onboardingQuestions.isEmpty else { return 0 }
-        return Double(onboardingAnswers.count) / Double(QuestionBanks.onboardingQuestions.count)
+        guard !QuestionBanks.shared.onboardingQuestions.isEmpty else { return 0 }
+        return Double(onboardingAnswers.count) / Double(QuestionBanks.shared.onboardingQuestions.count)
     }
     
     var dailyProgress: Double {
-        guard !QuestionBanks.dailyQuestions.isEmpty else { return 0 }
-        return Double(dailyAnswers.count) / Double(QuestionBanks.dailyQuestions.count)
+        guard !QuestionBanks.shared.dailyQuestions.isEmpty else { return 0 }
+        return Double(dailyAnswers.count) / Double(QuestionBanks.shared.dailyQuestions.count)
     }
     
     init(appState: AppState) {
@@ -132,7 +132,7 @@ class ChatViewModel: ObservableObject {
         
         let introMessage = ChatMessage(
             role: .assistant,
-            text: "Welcome! I'll ask you 10 questions to understand your current health baseline. This takes about 2 minutes.",
+            text: LanguageManager.shared.localized("Welcome! I'll ask you 10 questions to understand your current health baseline. This takes about 2 minutes."),
             timestamp: Date()
         )
         messages.append(introMessage)
@@ -185,9 +185,10 @@ class ChatViewModel: ObservableObject {
         isSubmitting = true
         submitState = .loading
         
+        let languageManager = LanguageManager.shared
         let calculatingMessage = ChatMessage(
             role: .assistant,
-            text: "Calculating your baseline...",
+            text: languageManager.localized("Calculating your baseline..."),
             timestamp: Date()
         )
         messages.append(calculatingMessage)
@@ -258,29 +259,18 @@ class ChatViewModel: ObservableObject {
                 let chronoAge = result.chronologicalAgeYears
                 let diff = bioAge - chronoAge
                 let absDiff = abs(diff)
-                let direction = diff >= 0 ? "older" : "younger"
+                let languageManager = LanguageManager.shared
+                let direction = diff >= 0 ? languageManager.localized("older") : languageManager.localized("younger")
                 let diffText = String(format: "%.2f", absDiff)
                 
-                // Determine key insights based on score
-                let scoreInsight: String
-                if result.totalScore < -0.5 {
-                    scoreInsight = "Your lifestyle shows strong rejuvenation potential. Keep up these positive habits."
-                } else if result.totalScore > 0.5 {
-                    scoreInsight = "There are opportunities to optimize your daily habits for better biological aging."
-                } else {
-                    scoreInsight = "You're on a balanced path. Small improvements can enhance your results."
-                }
-                
                 let welcomeMessage = """
-                Welcome! 🎉
+                \(languageManager.localized("Welcome! 🎉"))
                 
-                This app tracks your biological age based on daily lifestyle choices. Your baseline: \(String(format: "%.2f", bioAge)) years biological age (\(diffText) years \(direction) than your \(String(format: "%.0f", chronoAge)) chronological years).
+                \(languageManager.localized("This app tracks your biological age based on daily lifestyle choices. Your baseline:")) \(String(format: "%.2f", bioAge)) \(languageManager.localized("years biological age")) (\(diffText) \(languageManager.localized("years")) \(direction) \(languageManager.localized("than your")) \(String(format: "%.0f", chronoAge)) \(languageManager.localized("chronological years")).
                 
-                \(scoreInsight)
+                \(languageManager.localized("Complete your daily check-in each day to see real-time updates on your Score tab. Your biological age and trends will update based on your daily habits."))
                 
-                Complete your daily check-in each day to see real-time updates on your Score tab. Your biological age and trends will update based on your daily habits.
-                
-                How can I help you today?
+                \(languageManager.localized("How can I help you today?"))
                 """
                 
                 let welcomeChatMessage = ChatMessage(
@@ -297,8 +287,21 @@ class ChatViewModel: ObservableObject {
                     
                     await MainActor.run {
                         // Update onboarding status from backend response (source of truth)
-                        appState.setOnboardingStatus(authResponse.hasCompletedOnboarding)
-                        print("[ChatViewModel] Onboarding status from postAuthMe: \(authResponse.hasCompletedOnboarding)")
+                        appState.setOnboardingStatus(authResponse.hasCompletedOnboarding ?? false)
+                        
+                        // Update language preference from backend
+                        if let languageCode = authResponse.locale ?? authResponse.profile?.preferredLanguage {
+                            LanguageManager.shared.setLanguageCode(languageCode)
+                            appState.updateUserProfile(
+                                firstName: appState.userFirstName,
+                                lastName: appState.userLastName,
+                                chronologicalAge: appState.userChronologicalAge,
+                                timezone: appState.userTimezone,
+                                preferredLanguage: languageCode
+                            )
+                        }
+                        
+                        print("[ChatViewModel] Onboarding status from postAuthMe: \(authResponse.hasCompletedOnboarding ?? false)")
                         
                         // Switch to daily mode first so welcome message is visible
                         mode = .daily
@@ -384,9 +387,10 @@ class ChatViewModel: ObservableObject {
             messages.removeLast()
         }
         
+        let languageManager = LanguageManager.shared
         let calculatingMessage = ChatMessage(
             role: .assistant,
-            text: "Retrying...",
+            text: languageManager.localized("Calculating your baseline..."),
             timestamp: Date()
         )
         messages.append(calculatingMessage)
@@ -421,8 +425,8 @@ class ChatViewModel: ObservableObject {
                     
                     await MainActor.run {
                         // Update onboarding status from backend response (source of truth)
-                        appState.setOnboardingStatus(authResponse.hasCompletedOnboarding)
-                        print("[ChatViewModel] Retry - Onboarding status from postAuthMe: \(authResponse.hasCompletedOnboarding)")
+                        appState.setOnboardingStatus(authResponse.hasCompletedOnboarding ?? false)
+                        print("[ChatViewModel] Retry - Onboarding status from postAuthMe: \(authResponse.hasCompletedOnboarding ?? false)")
                         
                         messages.append(resultMessage)
                         submitState = .success
@@ -550,36 +554,41 @@ class ChatViewModel: ObservableObject {
                     if let todayEntry = result.today {
                         let absDelta = abs(todayEntry.deltaYears)
                         let deltaFormatted = String(format: "%.2f", absDelta)
+                        let languageManager = LanguageManager.shared
                         let direction: String
                         if todayEntry.deltaYears < 0 {
-                            direction = "\(deltaFormatted) years younger"
+                            direction = "\(deltaFormatted) \(languageManager.localized("years younger"))"
                         } else if todayEntry.deltaYears > 0 {
-                            direction = "\(deltaFormatted) years older"
+                            direction = "\(deltaFormatted) \(languageManager.localized("years older"))"
                         } else {
-                            direction = "no change"
+                            direction = languageManager.localized("no change")
                         }
                         
                         // Build reasons summary
                         let reasonsText: String
                         if !todayEntry.reasons.isEmpty {
-                            let reasonsList = todayEntry.reasons.prefix(3).joined(separator: ", ")
-                            reasonsText = "\n\nKey factors: \(reasonsList)"
+                            let userFriendlyReasons = todayEntry.reasons.prefix(3).map { reason in
+                                formatReasonKey(reason, languageManager: languageManager)
+                            }
+                            let reasonsList = userFriendlyReasons.joined(separator: ", ")
+                            reasonsText = "\n\n\(languageManager.localized("Key factors:")) \(reasonsList)"
                         } else {
                             reasonsText = ""
                         }
                         
                         completionText = """
-                        Daily check-in completed ✅
+                        \(languageManager.localized("Daily check-in completed ✅"))
                         
-                        You're trending \(direction) today.\(reasonsText)
+                        \(languageManager.localized("You're trending")) \(direction) \(languageManager.localized("today."))\(reasonsText)
                         
-                        Is there a topic you'd like help with?
+                        \(languageManager.localized("Is there a topic you'd like help with?"))
                         """
                     } else {
+                        let languageManager = LanguageManager.shared
                         completionText = """
-                        Daily check-in completed ✅
+                        \(languageManager.localized("Daily check-in completed ✅"))
                         
-                        Is there a topic you'd like help with?
+                        \(languageManager.localized("Is there a topic you'd like help with?"))
                         """
                     }
                     
@@ -639,22 +648,23 @@ class ChatViewModel: ObservableObject {
                     dailyCheckInState = .completed
                     
                     // Completion message with insight and follow-up
+                    let languageManager = LanguageManager.shared
                     let completionText: String
                     if let todayEntry = result.today {
                         let delta = String(format: "%.2f", todayEntry.deltaYears)
                         completionText = """
-                        Daily check-in completed ✅
+                        \(languageManager.localized("Daily check-in completed ✅"))
                         
-                        Today's aging: \(delta) years
-                        Score: \(String(format: "%.2f", todayEntry.score))
+                        \(languageManager.localized("Today's aging:")) \(delta) \(languageManager.localized("years"))
+                        \(languageManager.localized("Score:")) \(String(format: "%.2f", todayEntry.score))
                         
-                        Want a quick plan to improve tomorrow's score?
+                        \(languageManager.localized("Want a quick plan to improve tomorrow's score?"))
                         """
                     } else {
                         completionText = """
-                        Daily check-in completed ✅
+                        \(languageManager.localized("Daily check-in completed ✅"))
                         
-                        Want a quick plan to improve tomorrow's score?
+                        \(languageManager.localized("Want a quick plan to improve tomorrow's score?"))
                         """
                     }
                     
@@ -703,8 +713,8 @@ class ChatViewModel: ObservableObject {
         if mode == .onboarding && currentOnboardingQuestionIndex > 0 {
             currentOnboardingQuestionIndex -= 1
             // Remove last user answer
-            if currentOnboardingQuestionIndex < QuestionBanks.onboardingQuestions.count {
-                let question = QuestionBanks.onboardingQuestions[currentOnboardingQuestionIndex]
+            if currentOnboardingQuestionIndex < QuestionBanks.shared.onboardingQuestions.count {
+                let question = QuestionBanks.shared.onboardingQuestions[currentOnboardingQuestionIndex]
                 onboardingAnswers.removeValue(forKey: question.id)
             }
             // Remove last user message
@@ -714,8 +724,8 @@ class ChatViewModel: ObservableObject {
         } else if mode == .daily && currentDailyQuestionIndex > 0 {
             currentDailyQuestionIndex -= 1
             // Remove last user answer
-            if currentDailyQuestionIndex < QuestionBanks.dailyQuestions.count {
-                let question = QuestionBanks.dailyQuestions[currentDailyQuestionIndex]
+            if currentDailyQuestionIndex < QuestionBanks.shared.dailyQuestions.count {
+                let question = QuestionBanks.shared.dailyQuestions[currentDailyQuestionIndex]
                 dailyAnswers.removeValue(forKey: question.id)
             }
             // Remove last user message
@@ -723,6 +733,44 @@ class ChatViewModel: ObservableObject {
                 messages.remove(at: lastUserMsg)
             }
         }
+    }
+    
+    /// Formats backend reason keys into user-friendly localized text
+    private func formatReasonKey(_ key: String, languageManager: LanguageManager) -> String {
+        // Normalize key (lowercase, trim whitespace)
+        let normalizedKey = key.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Try multiple key formats that backend might send
+        let possibleKeys = [
+            normalizedKey,  // Original: "sleep duration"
+            normalizedKey.replacingOccurrences(of: " ", with: ""),  // "sleepduration"
+            normalizedKey.replacingOccurrences(of: " ", with: "_"),  // "sleep_duration"
+            normalizedKey.replacingOccurrences(of: " ", with: "-"),  // "sleep-duration"
+            // CamelCase variations
+            normalizedKey.split(separator: " ").enumerated().map { index, word in
+                index == 0 ? word.lowercased() : word.capitalized
+            }.joined()  // "sleepDuration"
+        ]
+        
+        // Try each possible key format
+        for possibleKey in possibleKeys {
+            let localized = languageManager.localized(possibleKey)
+            // If we found a translation (different from the key), return it
+            if localized != possibleKey && localized != normalizedKey {
+                return localized
+            }
+        }
+        
+        // Fallback: Convert key to readable format
+        // e.g., "sleepDuration" -> "Sleep Duration"
+        let formatted = normalizedKey
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .split(separator: " ")
+            .map { $0.capitalized }
+            .joined(separator: " ")
+        
+        return formatted
     }
     
     func sendFreeTextMessage(_ text: String) {
@@ -738,10 +786,10 @@ class ChatViewModel: ObservableObject {
         
         // Send to chat API
         LongevityAPI.shared.sendChatMessage(message: text) { [weak self] result in
-                DispatchQueue.main.async {
-                    self?.isWaitingForResponse = false
-                    switch result {
-                    case .success(let answer):
+            DispatchQueue.main.async {
+                self?.isWaitingForResponse = false
+                switch result {
+                case .success(let answer):
                     let assistantMessage = ChatMessage(
                         role: .assistant,
                         text: answer,

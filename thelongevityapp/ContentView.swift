@@ -160,6 +160,7 @@ struct OrganicPath2: Shape {
 
 // ContentView.swift
 struct ContentView: View {
+    @StateObject private var languageManager = LanguageManager.shared
     @State private var userMessage: String = ""
     @State private var aiAnswer: String = "Ask The Longevity App something to get started."
     @State private var isLoading: Bool = false
@@ -191,12 +192,12 @@ struct ContentView: View {
                         
                         // Main title text
                         VStack(spacing: 12) {
-                            Text("The Longevity App is ready.")
+                            Text(languageManager.localized("The Longevity App is ready."))
                                 .font(.system(size: 34, weight: .bold, design: .rounded))
                                 .foregroundColor(.white)
                                 .shadow(color: Color(red: 0.2, green: 0.5, blue: 0.35).opacity(0.6), radius: 12, x: 0, y: 0)
                             
-                            Text("Let's optimize your healthspan.")
+                            Text(languageManager.localized("Let's optimize your healthspan."))
                                 .font(.system(size: 22, weight: .medium, design: .rounded))
                                 .foregroundColor(Color(red: 0.75, green: 0.9, blue: 0.8))
                                 .shadow(color: Color(red: 0.2, green: 0.5, blue: 0.35).opacity(0.5), radius: 10, x: 0, y: 0)
@@ -212,7 +213,7 @@ struct ContentView: View {
                         Button(action: {
                             // Action for Start Daily Check-In
                         }) {
-                            Text("Start Daily Check-In")
+                            Text(languageManager.localized("Start Daily Check-In"))
                                 .font(.system(size: 18, weight: .semibold, design: .rounded))
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)

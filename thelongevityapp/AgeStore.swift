@@ -175,13 +175,13 @@ final class AgeStore: ObservableObject {
         print("  - State biological: \(response.state.currentBiologicalAgeYears)")
         print("  - State aging debt: \(response.state.agingDebtYears)")
         print("  - State rejuvenation streak: \(response.state.rejuvenationStreakDays)")
-        profileChronologicalAgeYears = response.profile.chronologicalAgeYears
-        currentBiologicalAgeYears = response.state.currentBiologicalAgeYears
-        agingDebtYears = response.state.agingDebtYears
+            profileChronologicalAgeYears = response.profile.chronologicalAgeYears
+            currentBiologicalAgeYears = response.state.currentBiologicalAgeYears
+            agingDebtYears = response.state.agingDebtYears
         
         // Streak values from backend - date-based and consecutive (not calculated locally)
-        rejuvenationStreakDays = response.state.rejuvenationStreakDays
-        totalRejuvenationDays = response.state.totalRejuvenationDays
+            rejuvenationStreakDays = response.state.rejuvenationStreakDays
+            totalRejuvenationDays = response.state.totalRejuvenationDays
         
         // Update today entry if available
         if let today = response.today {

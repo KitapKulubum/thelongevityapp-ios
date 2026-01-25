@@ -268,7 +268,7 @@ class ChatViewModel: ObservableObject {
                 
                 \(languageManager.localized("This app tracks your biological age based on daily lifestyle choices. Your baseline:")) \(String(format: "%.2f", bioAge)) \(languageManager.localized("years biological age")) (\(diffText) \(languageManager.localized("years")) \(direction) \(languageManager.localized("than your")) \(String(format: "%.0f", chronoAge)) \(languageManager.localized("chronological years")).
                 
-                \(languageManager.localized("Complete your daily check-in each day to see real-time updates on your Score tab. Your biological age and trends will update based on your daily habits."))
+                \(languageManager.localized("Complete your daily check-in each day to see real-time updates on your Age tab. Your biological age and trends will update based on your daily habits."))
                 
                 \(languageManager.localized("How can I help you today?"))
                 """
@@ -564,22 +564,10 @@ class ChatViewModel: ObservableObject {
                             direction = languageManager.localized("no change")
                         }
                         
-                        // Build reasons summary
-                        let reasonsText: String
-                        if !todayEntry.reasons.isEmpty {
-                            let userFriendlyReasons = todayEntry.reasons.prefix(3).map { reason in
-                                formatReasonKey(reason, languageManager: languageManager)
-                            }
-                            let reasonsList = userFriendlyReasons.joined(separator: ", ")
-                            reasonsText = "\n\n\(languageManager.localized("Key factors:")) \(reasonsList)"
-                        } else {
-                            reasonsText = ""
-                        }
-                        
                         completionText = """
                         \(languageManager.localized("Daily check-in completed ✅"))
                         
-                        \(languageManager.localized("You're trending")) \(direction) \(languageManager.localized("today."))\(reasonsText)
+                        \(languageManager.localized("You're trending")) \(direction) \(languageManager.localized("today."))
                         
                         \(languageManager.localized("Is there a topic you'd like help with?"))
                         """

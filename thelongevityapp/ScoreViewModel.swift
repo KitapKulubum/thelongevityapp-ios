@@ -54,7 +54,7 @@ final class ScoreViewModel: ObservableObject {
         // Chronological age is fixed, sourced from backend only.
         // If backend returns 0, it means data hasn't been set yet - keep existing value if it's valid
         if summary.state.chronologicalAgeYears > 0 {
-            chronologicalAgeYears = summary.state.chronologicalAgeYears
+        chronologicalAgeYears = summary.state.chronologicalAgeYears
         } else if chronologicalAgeYears == 0 {
             // If both are 0, this is likely initial state - log warning
             print("[ScoreViewModel] Warning: chronologicalAgeYears is 0 from backend, keeping 0")
